@@ -77,9 +77,21 @@ class JournalViewModel: ObservableObject {
         isRecording = false
         stopTimer()
         
-        // Simulate processing time (5 seconds)
+        // Skip saving if there's no text
+        if currentText.isEmpty {
+            return
+        }
+        
+        // Briefly show processing state (just for visual feedback)
         transcriptionInProgress = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+        
+        // Save the entry immediately
+        if !currentText.isEmpty {
+            saveEntry()
+        }
+        
+        // Reset the UI after a very short delay (enough for visual feedback)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.transcriptionInProgress = false
         }
     }

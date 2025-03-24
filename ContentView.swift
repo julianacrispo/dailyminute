@@ -10,56 +10,29 @@ import Speech
 
 struct ContentView: View {
     @ObservedObject var viewModel: JournalViewModel
-    @State private var editMode = false
     
     var body: some View {
         NavigationView {
             VStack {
+                // Title area - centered, "Journal" removed
+                Text("Daily Minute")
+                    .font(.system(size: 36, weight: .bold))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 20)
+                    .padding(.bottom, 10)
+                
                 if viewModel.transcriptionInProgress {
-                    ProgressView("Processing your journal entry...")
-                        .padding()
-                } else if !viewModel.currentText.isEmpty || editMode {
-                    VStack {
-                        if editMode {
-                            TextEditor(text: $viewModel.currentText)
-                                .padding()
-                                .background(Color(.systemGray6))
-                                .cornerRadius(8)
-                                .padding()
-                        } else {
-                            ScrollView {
-                                Text(viewModel.currentText)
-                                    .padding()
-                            }
-                        }
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                            .padding()
                         
-                        HStack {
-                            Button(action: {
-                                editMode.toggle()
-                            }) {
-                                Text(editMode ? "Done Editing" : "Edit")
-                                    .padding()
-                                    .background(Color.blue)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(8)
-                            }
-                            
-                            Button(action: {
-                                viewModel.saveEntry()
-                                editMode = false
-                            }) {
-                                Text("Save Entry")
-                                    .padding()
-                                    .background(Color.green)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(8)
-                            }
-                        }
-                        .padding()
+                        Text("Saving entry...")
+                            .font(.headline)
                     }
+                    .padding(.vertical)
                 } else {
-                    Spacer()
-                    
+                    // Recording area - always visible at top when not recording
                     ZStack {
                         Circle()
                             .stroke(lineWidth: 5)
@@ -83,27 +56,43 @@ struct ContentView: View {
                             Image(systemName: viewModel.isRecording ? "stop.circle.fill" : "mic.circle.fill")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .frame(width: 100, height: 100)
+                                .frame(width: 80, height: 80)
                                 .foregroundColor(viewModel.isRecording ? .red : .blue)
                         }
                     }
-                    .frame(width: 200, height: 200)
+                    .frame(width: 150, height: 150)
                     
-                    Spacer()
-                    
+                    // Timer text - shows during recording
                     if viewModel.isRecording {
                         Text("Recording: \(Int(viewModel.timeRemaining)) seconds left")
                             .font(.headline)
                             .foregroundColor(.red)
-                            .padding()
-                    } else {
+                            .padding(.bottom, 10)
+                    }
+                    
+                    // Transcribed text area
+                    if !viewModel.currentText.isEmpty {
+                        ScrollView {
+                            Text(viewModel.currentText)
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                        .padding(.horizontal)
+                        .frame(maxHeight: viewModel.isRecording ? 200 : .infinity)
+                    } else if !viewModel.isRecording {
+                        // Instruction text when idle
                         Text("Tap the microphone to start recording (max 1 minute)")
                             .multilineTextAlignment(.center)
                             .padding()
                     }
                 }
+                
+                Spacer()
             }
-            .navigationTitle("Daily Minute Journal")
+            // Remove the title from the navigation bar since we have our own centered title
+            .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 viewModel.requestSpeechAuthorization()
             }
