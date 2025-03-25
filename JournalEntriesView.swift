@@ -32,7 +32,7 @@ struct JournalEntriesView: View {
             } else {
                 List {
                     ForEach(viewModel.journalEntries.sorted(by: { $0.date > $1.date })) { entry in
-                        NavigationLink(destination: JournalEntryDetailView(entry: entry)) {
+                        NavigationLink(destination: JournalEntryDetailView(entry: entry, viewModel: viewModel)) {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(formattedDate(entry.date))
                                     .font(.headline)

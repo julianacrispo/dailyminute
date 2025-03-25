@@ -8,6 +8,7 @@ class JournalViewModel: ObservableObject {
     @Published var isRecording: Bool = false
     @Published var timeRemaining: Double = 60.0
     @Published var transcriptionInProgress: Bool = false
+    @Published var entrySaved: Bool = false
     
     private var audioEngine = AVAudioEngine()
     private var speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
@@ -82,17 +83,37 @@ class JournalViewModel: ObservableObject {
             return
         }
         
-        // Briefly show processing state (just for visual feedback)
+        // Store the current text for entry creation
+        let textToSave = currentText
+        
+        // IMPORTANT: Save the entry IMMEDIATELY to ensure it's not lost
+        // even if the user navigates away
+        let newEntry = JournalEntry(text: textToSave)
+        journalEntries.append(newEntry)
+        
+        // Clear the current text after saving - do this immediately as well
+        // to avoid any race conditions
+        let savedText = currentText
+        currentText = ""
+        
+        // Show processing state for visual feedback only
+        // This is just for UX, but the data is already saved
         transcriptionInProgress = true
         
-        // Save the entry immediately
-        if !currentText.isEmpty {
-            saveEntry()
-        }
-        
-        // Reset the UI after a very short delay (enough for visual feedback)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.transcriptionInProgress = false
+        // Visual feedback after saving
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            guard let self = self else { return }
+            
+            // Reset the UI state
+            self.transcriptionInProgress = false
+            
+            // Signal that entry was saved successfully - only for animation
+            self.entrySaved = true
+            
+            // Reset the saved flag after a delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.entrySaved = false
+            }
         }
     }
     
@@ -113,9 +134,21 @@ class JournalViewModel: ObservableObject {
         timer = nil
     }
     
+    // Keep only the original saveEntry method for backward compatibility
     func saveEntry() {
         let newEntry = JournalEntry(text: currentText)
         journalEntries.append(newEntry)
         currentText = ""
+    }
+    
+    func updateEntry(id: UUID, newText: String) {
+        if let index = journalEntries.firstIndex(where: { $0.id == id }) {
+            // Create a new entry with updated text but same ID and date
+            var updatedEntry = journalEntries[index]
+            updatedEntry.text = newText
+            
+            // Replace the old entry with the updated one
+            journalEntries[index] = updatedEntry
+        }
     }
 } 
