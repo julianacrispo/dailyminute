@@ -1,85 +1,115 @@
 import Foundation
 import Speech
 import SwiftUI
+import Accelerate
 
-class JournalViewModel: ObservableObject {
-    @Published var journalEntries: [JournalEntry] = []
-    @Published var currentText: String = ""
-    @Published var isRecording: Bool = false
-    @Published var timeRemaining: Double = 60.0
-    @Published var transcriptionInProgress: Bool = false
-    @Published var entrySaved: Bool = false
-    @Published var audioLevel: Double = 0.0
+@Observable class JournalViewModel {
+    var journalEntries: [JournalEntry] = []
+    var currentText: String = ""
+    var isRecording: Bool = false
+    var timeRemaining: Double = 60.0
+    var transcriptionInProgress: Bool = false
+    var entrySaved: Bool = false
+    var audioLevel: Double = 0.0
+    var activeTranscriptionMode: TranscriptionMode?
     
-    private var audioEngine = AVAudioEngine()
-    private var speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    enum TranscriptionMode {
+        case recording    // For new recordings
+        case editing(String)  // For editing existing text, with initial text
+    }
+    
+    private var audioEngine: AVAudioEngine?
+    private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var timer: Timer?
     private var audioLevelTimer: Timer?
+    private var textUpdateHandler: ((String) -> Void)?
+    
+    init() {
+        setupSpeechRecognition()
+    }
+    
+    private func setupSpeechRecognition() {
+        // Initialize speech recognizer with specific configuration
+        speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+        speechRecognizer?.defaultTaskHint = .dictation
+        
+        // Pre-warm audio engine
+        audioEngine = AVAudioEngine()
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.record, mode: .measurement, options: .duckOthers)
+            try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            print("Failed to setup audio session: \(error)")
+        }
+    }
     
     func requestSpeechAuthorization() {
-        SFSpeechRecognizer.requestAuthorization { authStatus in
+        guard speechRecognizer?.isAvailable == true else {
+            print("Speech recognition not available")
+            return
+        }
+        
+        SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in
             DispatchQueue.main.async {
-                if authStatus != .authorized {
-                    // Handle unauthorized access
-                    print("Speech recognition not authorized")
+                if authStatus == .authorized {
+                    self?.setupSpeechRecognition()
                 }
             }
         }
     }
     
-    func startRecording() {
-        guard !isRecording else { return }
+    func startTranscription(mode: TranscriptionMode, updateText: @escaping (String) -> Void) {
+        guard !isRecording,
+              let audioEngine = audioEngine,
+              let speechRecognizer = speechRecognizer,
+              speechRecognizer.isAvailable else { return }
         
-        // Reset the timer and text
-        timeRemaining = 60.0
-        currentText = ""
+        // Store the update handler
+        textUpdateHandler = updateText
         
-        // Start the recognition process
+        // Set initial state based on mode
+        switch mode {
+        case .recording:
+            timeRemaining = 60.0
+            currentText = ""
+        case .editing(let initialText):
+            currentText = initialText
+            timeRemaining = 300.0  // 5 minutes for editing
+        }
+        
+        activeTranscriptionMode = mode
+        
+        // Configure recognition request
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-        
         guard let recognitionRequest = recognitionRequest else { return }
         
-        let inputNode = audioEngine.inputNode
+        recognitionRequest.shouldReportPartialResults = true
+        recognitionRequest.taskHint = .dictation
+        recognitionRequest.contextualStrings = ["minute", "record", "today", "think"]
         
-        recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
+        let inputNode = audioEngine.inputNode
+        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+            self?.recognitionRequest?.append(buffer)
+            self?.processAudioLevel(buffer)
+        }
+        
+        recognitionTask = speechRecognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             guard let self = self else { return }
             
             if let result = result {
-                self.currentText = result.bestTranscription.formattedString
+                let transcription = result.bestTranscription.formattedString
+                DispatchQueue.main.async {
+                    self.currentText = transcription
+                    self.textUpdateHandler?(transcription)
+                }
             }
             
             if error != nil || (result?.isFinal ?? false) {
-                self.stopRecording()
-            }
-        }
-        
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
-            self.recognitionRequest?.append(buffer)
-            
-            // Calculate audio level from buffer
-            let channelData = buffer.floatChannelData?[0]
-            if let channelData = channelData {
-                let frames = buffer.frameLength
-                var sum: Float = 0
-                for i in 0..<frames {
-                    sum += abs(channelData[Int(i)])
-                }
-                let avg = sum / Float(frames)
-                DispatchQueue.main.async {
-                    // Add noise threshold and make the response more dramatic
-                    let threshold: Float = 0.01  // Adjust this value to change sensitivity
-                    let normalizedLevel = avg * 15  // Amplify the signal
-                    if normalizedLevel < threshold {
-                        // If below threshold, quickly decrease to show silence
-                        self.audioLevel = max(0, self.audioLevel - 0.3)
-                    } else {
-                        // If above threshold, use the normalized level
-                        self.audioLevel = Double(min(max(normalizedLevel, 0), 1))
-                    }
-                }
+                self.stopTranscription()
             }
         }
         
@@ -88,13 +118,42 @@ class JournalViewModel: ObservableObject {
             isRecording = true
             startTimer()
         } catch {
-            print("Audio engine failed to start: \(error.localizedDescription)")
+            print("Audio engine failed to start: \(error)")
+            stopTranscription()
         }
     }
     
-    func stopRecording() {
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+    private func processAudioLevel(_ buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData?[0] else { return }
+        let frames = buffer.frameLength
+        
+        // Use vDSP for faster audio processing
+        var rms: Float = 0
+        vDSP_measqv(channelData, 1, &rms, vDSP_Length(frames))
+        rms = sqrt(rms)
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let threshold: Float = 0.01
+            let normalizedLevel = rms * 15
+            
+            if normalizedLevel < threshold {
+                self.audioLevel = max(0, self.audioLevel - 0.3)
+            } else {
+                self.audioLevel = Double(min(max(normalizedLevel, 0), 1))
+            }
+        }
+    }
+    
+    func stopTranscription() {
+        // Prevent multiple calls
+        guard isRecording else { return }
+        
+        // Stop audio engine and clean up
+        audioEngine?.stop()
+        audioEngine?.inputNode.removeTap(onBus: 0)
+        
+        // Clean up recognition task
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
         recognitionRequest = nil
@@ -104,33 +163,39 @@ class JournalViewModel: ObservableObject {
         stopTimer()
         audioLevel = 0.0
         
-        // Skip saving if there's no text
-        if currentText.isEmpty {
-            return
+        // Handle completion based on mode
+        if case .recording = activeTranscriptionMode {
+            handleRecordingCompletion()
         }
         
-        // Store the current text for entry creation
+        activeTranscriptionMode = nil
+        textUpdateHandler = nil
+    }
+    
+    private func handleRecordingCompletion() {
+        // Skip saving if there's no text
+        guard !currentText.isEmpty else { return }
+        
         let textToSave = currentText
-        
-        // Save the entry IMMEDIATELY
-        let newEntry = JournalEntry(text: textToSave)
-        journalEntries.append(newEntry)
-        
-        // Clear the current text after saving
-        let savedText = currentText
         currentText = ""
         
-        // Show processing state
         transcriptionInProgress = true
         
-        // Visual feedback after saving
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+        DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            self.transcriptionInProgress = false
-            self.entrySaved = true
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.entrySaved = false
+            // Save entry
+            let newEntry = JournalEntry(text: textToSave)
+            self.journalEntries.append(newEntry)
+            
+            // Update UI state
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.transcriptionInProgress = false
+                self.entrySaved = true
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.entrySaved = false
+                }
             }
         }
     }
@@ -138,11 +203,9 @@ class JournalViewModel: ObservableObject {
     private func startTimer() {
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
             guard let self = self else { return }
-            
             self.timeRemaining -= 0.1
-            
             if self.timeRemaining <= 0 {
-                self.stopRecording()
+                self.stopTranscription()
             }
         }
     }
@@ -150,13 +213,6 @@ class JournalViewModel: ObservableObject {
     private func stopTimer() {
         timer?.invalidate()
         timer = nil
-    }
-    
-    // Keep only the original saveEntry method for backward compatibility
-    func saveEntry() {
-        let newEntry = JournalEntry(text: currentText)
-        journalEntries.append(newEntry)
-        currentText = ""
     }
     
     func updateEntry(id: UUID, newText: String) {
@@ -167,6 +223,14 @@ class JournalViewModel: ObservableObject {
             
             // Replace the old entry with the updated one
             journalEntries[index] = updatedEntry
+        }
+    }
+    
+    // Deprecate these in favor of the unified system
+    @available(*, deprecated, message: "Use startTranscription(mode:updateText:) instead")
+    func startRecording() {
+        startTranscription(mode: .recording) { [weak self] text in
+            self?.currentText = text
         }
     }
 } 

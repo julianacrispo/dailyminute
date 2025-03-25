@@ -2,12 +2,14 @@ import SwiftUI
 
 struct JournalEntryDetailView: View {
     let entry: JournalEntry
-    @ObservedObject var viewModel: JournalViewModel
+    @Bindable var viewModel: JournalViewModel
     @Environment(\.dismiss) private var dismiss
     
     @State private var editedText: String
     @State private var isEditing: Bool = false
     @State private var showSaveConfirmation: Bool = false
+    @FocusState private var isFocused: Bool
+    @State private var isTranscribing: Bool = false
     
     init(entry: JournalEntry, viewModel: JournalViewModel) {
         self.entry = entry
@@ -32,19 +34,27 @@ struct JournalEntryDetailView: View {
                 
                 Divider()
                 
-                // Journal content - either text or textarea depending on edit mode
+                // Journal content - clean and floating text
                 if isEditing {
                     TextEditor(text: $editedText)
                         .font(.body)
-                        .padding(10)
-                        .frame(minHeight: 200)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
+                        .lineSpacing(6)
+                        .frame(maxWidth: .infinity, minHeight: 200, maxHeight: .infinity)
+                        .scrollContentBackground(.hidden)
+                        .background(Color.clear)
+                        .focused($isFocused)
+                        .onChange(of: isEditing) { newValue in
+                            if newValue {
+                                isFocused = true
+                                startTranscribing()
+                            } else {
+                                stopTranscribing()
+                            }
+                        }
                 } else {
                     Text(entry.text)
                         .font(.body)
                         .lineSpacing(6)
-                        .padding(.vertical, 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 
@@ -53,28 +63,25 @@ struct JournalEntryDetailView: View {
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .navigationTitle("Journal Entry")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Minute")
+                    .font(.system(size: 20))
+                    .foregroundColor(Color(.systemGray))
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 if isEditing {
-                    Button("Save") {
+                    Button("Done") {
+                        stopTranscribing()
                         saveChanges()
                     }
+                    .foregroundColor(Color(.systemGray))
                 } else {
                     Button("Edit") {
                         isEditing = true
                     }
-                }
-            }
-            
-            ToolbarItem(placement: .navigationBarLeading) {
-                if isEditing {
-                    Button("Cancel") {
-                        // Discard changes and exit edit mode
-                        editedText = entry.text
-                        isEditing = false
-                    }
+                    .foregroundColor(Color(.systemGray))
                 }
             }
         }
@@ -89,7 +96,7 @@ struct JournalEntryDetailView: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundColor(.green)
                             Text("Changes saved")
-                                .foregroundColor(.green)
+                                .foregroundColor(.black)
                                 .font(.headline)
                         }
                         .padding()
@@ -117,6 +124,20 @@ struct JournalEntryDetailView: View {
                 }
             }
         )
+    }
+    
+    private func startTranscribing() {
+        viewModel.startTranscription(mode: .editing(editedText)) { newText in
+            editedText = newText
+        }
+        isTranscribing = true
+    }
+    
+    private func stopTranscribing() {
+        if isTranscribing {
+            viewModel.stopTranscription()
+            isTranscribing = false
+        }
     }
     
     private func saveChanges() {

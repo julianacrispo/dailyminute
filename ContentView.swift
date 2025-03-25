@@ -9,7 +9,7 @@ import SwiftUI
 import Speech
 
 struct ContentView: View {
-    @ObservedObject var viewModel: JournalViewModel
+    @Bindable var viewModel: JournalViewModel
     @State private var showSuccessAnimation = false
     
     var body: some View {
@@ -29,7 +29,7 @@ struct ContentView: View {
                             .scaleEffect(1.2)
                             .padding()
                         
-                        Text("Saving entry...")
+                        Text("Saving minute...")
                             .font(.headline)
                             .foregroundColor(Color(.systemGray))
                     }
@@ -54,7 +54,7 @@ struct ContentView: View {
                                 )
                         }
                         
-                        Text("Journal entry saved!")
+                        Text("Minute saved!")
                             .font(.headline)
                             .foregroundColor(Color(.systemGray))
                     }

@@ -10,20 +10,32 @@ import SwiftUI
 @main
 struct DailyMinuteApp: App {
     @StateObject private var viewModel = JournalViewModel()
+    @State private var selectedTab = 0
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
     var body: some Scene {
         WindowGroup {
-            TabView {
-                ContentView(viewModel: viewModel)
-                    .tabItem {
-                        Label("Record", systemImage: "mic")
+            if !hasCompletedOnboarding {
+                OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
+            } else {
+                TabView(selection: $selectedTab) {
+                    ContentView(viewModel: viewModel)
+                        .tabItem {
+                            Label("Record", systemImage: "mic")
+                        }
+                        .tag(0)
+                    
+                    NavigationView {
+                        JournalEntriesView(viewModel: viewModel)
                     }
-                
-                NavigationView {
-                    JournalEntriesView(viewModel: viewModel)
+                    .tabItem {
+                        Label("Minutes", systemImage: "list.bullet")
+                    }
+                    .tag(1)
                 }
-                .tabItem {
-                    Label("Entries", systemImage: "list.bullet")
+                .tint(Color.black)
+                .onChange(of: selectedTab) { _ in
+                    // This triggers a UI refresh when tab changes
                 }
             }
         }

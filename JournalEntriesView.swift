@@ -1,16 +1,18 @@
 import SwiftUI
 
 struct JournalEntriesView: View {
-    @ObservedObject var viewModel: JournalViewModel
+    @Bindable var viewModel: JournalViewModel
     
     var body: some View {
-        VStack {
-            // Title area - centered, matches main view
-            Text("Daily Minute")
-                .font(.system(size: 36, weight: .bold))
+        VStack(spacing: 0) {
+            // Title area - centered
+            Text("Your minutes")
+                .font(.system(size: 20))
+                .foregroundColor(Color(.systemGray))
                 .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal)
                 .padding(.top, 20)
-                .padding(.bottom, 10)
+                .padding(.bottom, 24)
             
             if viewModel.journalEntries.isEmpty {
                 Spacer()
@@ -20,36 +22,55 @@ struct JournalEntriesView: View {
                         .foregroundColor(.secondary)
                         .padding()
                     
-                    Text("No journal entries yet")
+                    Text("No minutes yet")
                         .font(.headline)
                         .foregroundColor(.secondary)
                     
-                    Text("Your recorded entries will appear here")
+                    Text("Your recorded minutes will appear here")
                         .font(.subheadline)
                         .foregroundColor(.secondary.opacity(0.8))
                 }
                 Spacer()
             } else {
-                List {
-                    ForEach(viewModel.journalEntries.sorted(by: { $0.date > $1.date })) { entry in
-                        NavigationLink(destination: JournalEntryDetailView(entry: entry, viewModel: viewModel)) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(formattedDate(entry.date))
-                                    .font(.headline)
-                                    .foregroundColor(.primary)
-                                
-                                Text(entry.text)
-                                    .font(.body)
-                                    .lineLimit(2)
-                                    .foregroundColor(.secondary)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(viewModel.journalEntries.sorted(by: { $0.date > $1.date })) { entry in
+                            NavigationLink(destination: JournalEntryDetailView(entry: entry, viewModel: viewModel)) {
+                                HStack(alignment: .center, spacing: 16) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text(formattedDate(entry.date))
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                            .foregroundColor(.black)
+                                        
+                                        Text(entry.text)
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                            .lineLimit(3)
+                                            .multilineTextAlignment(.leading)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .foregroundColor(Color(.systemGray3))
+                                        .font(.system(size: 14, weight: .semibold))
+                                }
+                                .padding(.vertical, 16)
+                                .padding(.horizontal)
                             }
-                            .padding(.vertical, 8)
+                            
+                            if entry.id != viewModel.journalEntries.sorted(by: { $0.date > $1.date }).last?.id {
+                                Divider()
+                                    .padding(.horizontal)
+                            }
                         }
                     }
                 }
-                .listStyle(InsetGroupedListStyle())
+                .background(Color.white)
             }
         }
+        .background(Color.white)
         .navigationBarTitleDisplayMode(.inline)
     }
     
