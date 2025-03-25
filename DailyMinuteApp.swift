@@ -9,7 +9,7 @@ import SwiftUI
 
 @main
 struct DailyMinuteApp: App {
-    @StateObject private var viewModel = JournalViewModel()
+    @State private var viewModel = JournalViewModel()
     @State private var selectedTab = 0
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     

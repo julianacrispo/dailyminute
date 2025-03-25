@@ -89,9 +89,11 @@ struct ContentView: View {
                         
                         Button(action: {
                             if viewModel.isRecording {
-                                viewModel.stopRecording()
+                                viewModel.stopTranscription()
                             } else {
-                                viewModel.startRecording()
+                                viewModel.startTranscription(mode: .recording) { text in
+                                    // Text updates will be handled by the ViewModel
+                                }
                             }
                         }) {
                             Image(systemName: viewModel.isRecording ? "stop.circle.fill" : "mic.circle.fill")

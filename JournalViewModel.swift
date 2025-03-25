@@ -225,12 +225,4 @@ import Accelerate
             journalEntries[index] = updatedEntry
         }
     }
-    
-    // Deprecate these in favor of the unified system
-    @available(*, deprecated, message: "Use startTranscription(mode:updateText:) instead")
-    func startRecording() {
-        startTranscription(mode: .recording) { [weak self] text in
-            self?.currentText = text
-        }
-    }
 } 
