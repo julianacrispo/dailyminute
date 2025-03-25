@@ -9,12 +9,14 @@ class JournalViewModel: ObservableObject {
     @Published var timeRemaining: Double = 60.0
     @Published var transcriptionInProgress: Bool = false
     @Published var entrySaved: Bool = false
+    @Published var audioLevel: Double = 0.0
     
     private var audioEngine = AVAudioEngine()
     private var speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var timer: Timer?
+    private var audioLevelTimer: Timer?
     
     func requestSpeechAuthorization() {
         SFSpeechRecognizer.requestAuthorization { authStatus in
@@ -56,6 +58,29 @@ class JournalViewModel: ObservableObject {
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
             self.recognitionRequest?.append(buffer)
+            
+            // Calculate audio level from buffer
+            let channelData = buffer.floatChannelData?[0]
+            if let channelData = channelData {
+                let frames = buffer.frameLength
+                var sum: Float = 0
+                for i in 0..<frames {
+                    sum += abs(channelData[Int(i)])
+                }
+                let avg = sum / Float(frames)
+                DispatchQueue.main.async {
+                    // Add noise threshold and make the response more dramatic
+                    let threshold: Float = 0.01  // Adjust this value to change sensitivity
+                    let normalizedLevel = avg * 15  // Amplify the signal
+                    if normalizedLevel < threshold {
+                        // If below threshold, quickly decrease to show silence
+                        self.audioLevel = max(0, self.audioLevel - 0.3)
+                    } else {
+                        // If above threshold, use the normalized level
+                        self.audioLevel = Double(min(max(normalizedLevel, 0), 1))
+                    }
+                }
+            }
         }
         
         do {
@@ -77,6 +102,7 @@ class JournalViewModel: ObservableObject {
         
         isRecording = false
         stopTimer()
+        audioLevel = 0.0
         
         // Skip saving if there's no text
         if currentText.isEmpty {
@@ -86,31 +112,23 @@ class JournalViewModel: ObservableObject {
         // Store the current text for entry creation
         let textToSave = currentText
         
-        // IMPORTANT: Save the entry IMMEDIATELY to ensure it's not lost
-        // even if the user navigates away
+        // Save the entry IMMEDIATELY
         let newEntry = JournalEntry(text: textToSave)
         journalEntries.append(newEntry)
         
-        // Clear the current text after saving - do this immediately as well
-        // to avoid any race conditions
+        // Clear the current text after saving
         let savedText = currentText
         currentText = ""
         
-        // Show processing state for visual feedback only
-        // This is just for UX, but the data is already saved
+        // Show processing state
         transcriptionInProgress = true
         
         // Visual feedback after saving
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
             guard let self = self else { return }
-            
-            // Reset the UI state
             self.transcriptionInProgress = false
-            
-            // Signal that entry was saved successfully - only for animation
             self.entrySaved = true
             
-            // Reset the saved flag after a delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                 self?.entrySaved = false
             }

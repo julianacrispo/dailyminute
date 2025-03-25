@@ -16,8 +16,9 @@ struct ContentView: View {
         NavigationView {
             VStack {
                 // Title area - centered, "Journal" removed
-                Text("Daily Minute")
-                    .font(.system(size: 36, weight: .bold))
+                Text("Hey Juliana, what are you thinking?")
+                    .font(.system(size: 20))
+                    .foregroundColor(Color(.systemGray))
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 20)
                     .padding(.bottom, 10)
@@ -30,6 +31,7 @@ struct ContentView: View {
                         
                         Text("Saving entry...")
                             .font(.headline)
+                            .foregroundColor(Color(.systemGray))
                     }
                     .padding(.vertical)
                 } else if showSuccessAnimation {
@@ -37,18 +39,24 @@ struct ContentView: View {
                     VStack(spacing: 12) {
                         ZStack {
                             Circle()
-                                .fill(Color.green.opacity(0.2))
+                                .fill(Color(.systemGray6))
                                 .frame(width: 100, height: 100)
                             
                             Image(systemName: "checkmark.circle.fill")
                                 .resizable()
                                 .frame(width: 70, height: 70)
-                                .foregroundColor(.green)
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [Color.black, Color(.systemGray2)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
                         }
                         
                         Text("Journal entry saved!")
                             .font(.headline)
-                            .foregroundColor(.green)
+                            .foregroundColor(Color(.systemGray))
                     }
                     .padding(.vertical)
                     .transition(.opacity)
@@ -68,21 +76,20 @@ struct ContentView: View {
                     // Recording area - always visible at top when not recording
                     ZStack {
                         Circle()
-                            .stroke(lineWidth: 5)
-                            .opacity(0.3)
-                            .foregroundColor(Color.blue)
+                            .stroke(lineWidth: 4)
+                            .opacity(0.2)
+                            .foregroundColor(Color(.systemGray3))
                         
                         Circle()
                             .trim(from: 0.0, to: viewModel.isRecording ? max(0, min(1, CGFloat(viewModel.timeRemaining / 60.0))) : 1.0)
-                            .stroke(style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
-                            .foregroundColor(Color.blue)
+                            .stroke(style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                            .foregroundColor(Color(.systemGray))
                             .rotationEffect(Angle(degrees: 270.0))
                             .animation(.linear(duration: 0.1), value: viewModel.timeRemaining)
                         
                         Button(action: {
                             if viewModel.isRecording {
                                 viewModel.stopRecording()
-                                // Let the transcriptionInProgress state handle showing the success animation
                             } else {
                                 viewModel.startRecording()
                             }
@@ -91,35 +98,69 @@ struct ContentView: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .frame(width: 80, height: 80)
-                                .foregroundColor(viewModel.isRecording ? .red : .blue)
+                                .foregroundStyle(
+                                    viewModel.isRecording ?
+                                    LinearGradient(
+                                        colors: [Color(.systemGray), Color(.systemGray2)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ) :
+                                    LinearGradient(
+                                        colors: [Color.black, Color(.systemGray2)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
                         }
                     }
                     .frame(width: 150, height: 150)
                     
                     // Timer text - shows during recording
                     if viewModel.isRecording {
-                        Text("Recording: \(Int(viewModel.timeRemaining)) seconds left")
-                            .font(.headline)
-                            .foregroundColor(.red)
-                            .padding(.bottom, 10)
+                        VStack(spacing: 10) {
+                            // Dynamic waveform visualization
+                            HStack(spacing: 3) {
+                                ForEach(0..<20) { index in
+                                    RoundedRectangle(cornerRadius: 1)
+                                        .fill(Color(.systemGray))
+                                        .frame(width: 2, height: 20)
+                                        .scaleEffect(
+                                            y: 0.1 + (viewModel.audioLevel * 
+                                                (sin(Double(index) / 2 + Date().timeIntervalSince1970 * 5) * 0.5 +
+                                                cos(Double(index) / 3 + Date().timeIntervalSince1970 * 4) * 0.3 +
+                                                sin(Double(index) + Date().timeIntervalSince1970 * 6) * 0.2) * 
+                                                (viewModel.audioLevel > 0.1 ? 1.0 : 0.2)
+                                            ),
+                                            anchor: .center
+                                        )
+                                        .animation(
+                                            Animation.spring(response: 0.1, dampingFraction: 0.7)
+                                                .delay(Double(index) * 0.01),
+                                            value: viewModel.audioLevel
+                                        )
+                                }
+                            }
+                            .frame(height: 25)
+                            
+                            Text("\(Int(viewModel.timeRemaining))s")
+                                .font(.system(size: 14))
+                                .foregroundColor(Color(.systemGray))
+                        }
+                        .padding(.bottom, 10)
                     }
                     
                     // Transcribed text area
                     if !viewModel.currentText.isEmpty {
                         ScrollView {
                             Text(viewModel.currentText)
+                                .foregroundColor(Color(.systemGray))
                                 .padding()
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .background(Color(.systemGray6))
-                        .cornerRadius(10)
-                        .padding(.horizontal)
                         .frame(maxHeight: viewModel.isRecording ? 200 : .infinity)
                     } else if !viewModel.isRecording {
-                        // Instruction text when idle
-                        Text("Tap the microphone to start recording (max 1 minute)")
-                            .multilineTextAlignment(.center)
-                            .padding()
+                        // Remove instruction text completely
+                        Spacer()
                     }
                 }
                 
