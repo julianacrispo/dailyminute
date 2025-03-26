@@ -4,6 +4,7 @@ struct JournalEntriesView: View {
     @Bindable var viewModel: JournalViewModel
     @State private var selectedDate: Date = Date()
     @State private var currentMonth: Date = Date()
+    @State private var selectedEntry: JournalEntry? = nil
     
     var body: some View {
         ZStack {
@@ -58,21 +59,26 @@ struct JournalEntriesView: View {
                     .padding(.horizontal)
                     
                     // Calendar grid
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 10) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
                         ForEach(daysInMonth(), id: \.self) { date in
                             if let date = date {
                                 CalendarDayButton(
                                     date: date,
                                     isSelected: isSameDay(date, selectedDate),
                                     hasEntries: hasEntriesForDate(date),
-                                    isCurrentMonth: isSameMonth(date, currentMonth)
-                                ) {
-                                    selectedDate = date
-                                }
+                                    isCurrentMonth: isSameMonth(date, currentMonth),
+                                    action: {
+                                        selectedDate = date
+                                    },
+                                    viewModel: viewModel,
+                                    onEntrySelected: { entry in
+                                        selectedEntry = entry
+                                    }
+                                )
                             } else {
                                 // Empty space for days not in current month
                                 Color.clear
-                                    .frame(height: 40)
+                                    .frame(height: 44)
                             }
                         }
                     }
@@ -172,6 +178,22 @@ struct JournalEntriesView: View {
                 }
             }
             .navigationBarHidden(true)
+            .background(
+                // Hidden navigation link that will be activated programmatically
+                NavigationLink(
+                    destination: Group {
+                        if let entry = selectedEntry {
+                            JournalEntryDetailView(entry: entry, viewModel: viewModel)
+                        }
+                    },
+                    isActive: Binding(
+                        get: { selectedEntry != nil },
+                        set: { if !$0 { selectedEntry = nil } }
+                    )
+                ) {
+                    EmptyView()
+                }
+            )
         }
     }
     
@@ -281,40 +303,75 @@ struct CalendarDayButton: View {
     let hasEntries: Bool
     let isCurrentMonth: Bool
     let action: () -> Void
+    let viewModel: JournalViewModel
+    let onEntrySelected: (JournalEntry) -> Void
     
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 2) {
-                Text("\(Calendar.current.component(.day, from: date))")
-                    .font(.system(size: 16, weight: isSelected ? .bold : .regular))
-                    .foregroundColor(textColor)
-                
-                // Indicator for entries
-                if hasEntries {
+        Button(action: {
+            // Select the day first (updates UI)
+            action()
+            
+            // If there are entries, navigate to the first one
+            if hasEntries {
+                navigateToFirstEntry()
+            }
+        }) {
+            VStack(spacing: 4) {
+                // Day number inside a circle
+                ZStack {
+                    // Background circle - filled for days with entries
                     Circle()
-                        .fill(AppColors.accent)
-                        .frame(width: 6, height: 6)
-                } else {
-                    Circle()
-                        .fill(Color.clear)
-                        .frame(width: 6, height: 6)
+                        .fill(backgroundFill)
+                        .frame(width: 36, height: 36)
+                    
+                    // Day number text
+                    Text("\(Calendar.current.component(.day, from: date))")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(textColor)
                 }
             }
-            .frame(height: 40)
+            .frame(height: 44)
             .frame(maxWidth: .infinity)
-            .background(isSelected ? AppColors.accent.opacity(0.2) : Color.clear)
-            .cornerRadius(8)
         }
         .buttonStyle(PlainButtonStyle())
     }
     
+    // Function to navigate to the first entry for this day
+    private func navigateToFirstEntry() {
+        if hasEntries {
+            let entriesForDay = viewModel.journalEntries.filter { entry in
+                Calendar.current.isDate(entry.date, inSameDayAs: date)
+            }.sorted(by: { $0.date < $1.date })
+            
+            if let firstEntry = entriesForDay.first {
+                onEntrySelected(firstEntry)
+            }
+        }
+    }
+    
+    // Determine the fill color for the day circle
+    private var backgroundFill: Color {
+        if !isCurrentMonth {
+            return Color.clear
+        } else if isSelected {
+            return AppColors.accent
+        } else if hasEntries {
+            return AppColors.accent
+        } else if isSameDay(date, Date()) {
+            return AppColors.accent.opacity(0.2)
+        } else {
+            return Color.clear
+        }
+    }
+    
+    // Determine text color based on state
     private var textColor: Color {
         if !isCurrentMonth {
             return AppColors.textTertiary
-        } else if isSelected {
-            return AppColors.accent
+        } else if isSelected || hasEntries {
+            return Color.white // White text on purple background
         } else if isSameDay(date, Date()) {
-            return AppColors.accent
+            return AppColors.accent // Purple text for today
         } else {
             return AppColors.textPrimary
         }
