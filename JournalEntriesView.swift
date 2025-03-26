@@ -2,6 +2,8 @@ import SwiftUI
 
 struct JournalEntriesView: View {
     @Bindable var viewModel: JournalViewModel
+    @State private var selectedDate: Date = Date()
+    @State private var currentMonth: Date = Date()
     
     var body: some View {
         ZStack {
@@ -17,73 +19,128 @@ struct JournalEntriesView: View {
                     .padding(.top, 20)
                     .padding(.horizontal)
                 
-                if viewModel.journalEntries.isEmpty {
-                    Spacer()
-                    VStack(spacing: 24) {
-                        Image(systemName: "note.text")
-                            .font(.system(size: 60))
-                            .foregroundColor(AppColors.textSecondary)
-                            .padding()
+                // Calendar view
+                VStack(spacing: 16) {
+                    // Month navigation
+                    HStack {
+                        Button(action: previousMonth) {
+                            Image(systemName: "chevron.left")
+                                .foregroundColor(AppColors.textPrimary)
+                                .font(.system(size: 16, weight: .semibold))
+                                .padding(8)
+                        }
                         
-                        Text("No minutes yet")
+                        Spacer()
+                        
+                        Text(monthYearFormatter.string(from: currentMonth))
                             .headerStyle()
                         
-                        Text("Your recorded minutes will appear here")
-                            .captionStyle()
-                    }
-                    .padding(40)
-                    Spacer()
-                } else {
-                    // Tonight's routine card - Eight Sleep style
-                    DarkCard {
-                        HStack {
-                            Text("Tonight's minutes")
-                                .headerStyle()
-                            
-                            Spacer()
-                            
+                        Spacer()
+                        
+                        Button(action: nextMonth) {
                             Image(systemName: "chevron.right")
-                                .foregroundColor(AppColors.textSecondary)
-                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(AppColors.textPrimary)
+                                .font(.system(size: 16, weight: .semibold))
+                                .padding(8)
                         }
                     }
                     .padding(.horizontal)
-                    .padding(.bottom, 10)
                     
-                    // Journal entries with Eight Sleep card style
-                    ScrollView {
-                        VStack(spacing: 16) {
-                            // Section header
-                            HStack {
-                                Text("Weekly minutes")
-                                    .headerStyle()
-                                
-                                Spacer()
-                                
-                                Image(systemName: "plus")
-                                    .foregroundColor(AppColors.textPrimary)
-                                    .font(.system(size: 18, weight: .medium))
+                    // Day of week headers
+                    HStack(spacing: 0) {
+                        ForEach(Calendar.current.shortWeekdaySymbols, id: \.self) { day in
+                            Text(day)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(AppColors.textSecondary)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(.horizontal)
+                    
+                    // Calendar grid
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 10) {
+                        ForEach(daysInMonth(), id: \.self) { date in
+                            if let date = date {
+                                CalendarDayButton(
+                                    date: date,
+                                    isSelected: isSameDay(date, selectedDate),
+                                    hasEntries: hasEntriesForDate(date),
+                                    isCurrentMonth: isSameMonth(date, currentMonth)
+                                ) {
+                                    selectedDate = date
+                                }
+                            } else {
+                                // Empty space for days not in current month
+                                Color.clear
+                                    .frame(height: 40)
                             }
-                            .padding(.horizontal)
-                            .padding(.top, 10)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.vertical)
+                .background(AppColors.cardBackground)
+                .cornerRadius(16)
+                .padding(.horizontal)
+                .padding(.top, 10)
+                
+                // Selected day entries
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Text(dayFormatter.string(from: selectedDate))
+                            .headerStyle()
+                        
+                        Spacer()
+                        
+                        Text("\(entriesForSelectedDate().count) minutes")
+                            .captionStyle()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 20)
+                    
+                    if entriesForSelectedDate().isEmpty {
+                        Spacer()
+                        VStack(spacing: 20) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.system(size: 60))
+                                .foregroundColor(AppColors.textSecondary)
                             
-                            // Entry cards
-                            ForEach(viewModel.journalEntries.sorted(by: { $0.date > $1.date })) { entry in
+                            Text("No minutes recorded")
+                                .headerStyle()
+                            
+                            Text("Record minutes to see them appear here for this day")
+                                .captionStyle()
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 40)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 40)
+                        Spacer()
+                    } else {
+                        ScrollView {
+                            ForEach(entriesForSelectedDate().sorted(by: { $0.date > $1.date })) { entry in
                                 NavigationLink(destination: JournalEntryDetailView(entry: entry, viewModel: viewModel)) {
                                     DarkCard {
                                         VStack(alignment: .leading, spacing: 12) {
-                                            // Date and indicators
+                                            // Time and indicators
                                             HStack {
                                                 Image(systemName: "waveform")
                                                     .foregroundColor(AppColors.textSecondary)
                                                 
-                                                Text(formatTime(entry.date))
+                                                Text(timeFormatter.string(from: entry.date))
                                                     .captionStyle()
                                                 
                                                 Spacer()
                                                 
-                                                Text(formatDate(entry.date))
-                                                    .captionStyle()
+                                                // Word count indicator
+                                                HStack(spacing: 4) {
+                                                    Text("\(wordCount(entry.text))")
+                                                        .captionStyle()
+                                                    
+                                                    Image(systemName: "text.word.count")
+                                                        .font(.system(size: 12))
+                                                        .foregroundColor(AppColors.textSecondary)
+                                                }
                                             }
                                             
                                             DarkDivider()
@@ -109,6 +166,7 @@ struct JournalEntriesView: View {
                                 }
                                 .buttonStyle(PlainButtonStyle())
                             }
+                            .padding(.bottom, 16)
                         }
                     }
                 }
@@ -117,16 +175,154 @@ struct JournalEntriesView: View {
         }
     }
     
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE"
-        return formatter.string(from: date)
+    // Calendar helper functions
+    private func daysInMonth() -> [Date?] {
+        let calendar = Calendar.current
+        
+        // Get start of the month
+        let startDate = calendar.date(from: calendar.dateComponents([.year, .month], from: currentMonth))!
+        
+        // Get the weekday of the first day (0 = Sunday, 1 = Monday, etc.)
+        let firstWeekday = calendar.component(.weekday, from: startDate)
+        
+        // Calculate offset to fill the grid from Sunday
+        let offset = firstWeekday - 1
+        
+        // Get the range of days in month
+        let daysInMonth = calendar.range(of: .day, in: .month, for: startDate)!.count
+        
+        // Create array with offset placeholders and days of the month
+        var days = Array(repeating: nil as Date?, count: offset)
+        
+        for day in 1...daysInMonth {
+            if let date = calendar.date(byAdding: .day, value: day - 1, to: startDate) {
+                days.append(date)
+            }
+        }
+        
+        // Ensure we have complete weeks (multiples of 7)
+        while days.count % 7 != 0 {
+            days.append(nil)
+        }
+        
+        return days
     }
     
-    private func formatTime(_ date: Date) -> String {
+    private func previousMonth() {
+        if let newDate = Calendar.current.date(byAdding: .month, value: -1, to: currentMonth) {
+            withAnimation {
+                currentMonth = newDate
+            }
+        }
+    }
+    
+    private func nextMonth() {
+        if let newDate = Calendar.current.date(byAdding: .month, value: 1, to: currentMonth) {
+            withAnimation {
+                currentMonth = newDate
+            }
+        }
+    }
+    
+    private func isSameDay(_ date1: Date, _ date2: Date) -> Bool {
+        let calendar = Calendar.current
+        return calendar.isDate(date1, inSameDayAs: date2)
+    }
+    
+    private func isSameMonth(_ date1: Date, _ date2: Date) -> Bool {
+        let calendar = Calendar.current
+        let components1 = calendar.dateComponents([.year, .month], from: date1)
+        let components2 = calendar.dateComponents([.year, .month], from: date2)
+        return components1.year == components2.year && components1.month == components2.month
+    }
+    
+    private func hasEntriesForDate(_ date: Date) -> Bool {
+        return !entriesForDate(date).isEmpty
+    }
+    
+    private func entriesForDate(_ date: Date) -> [JournalEntry] {
+        return viewModel.journalEntries.filter { entry in
+            isSameDay(entry.date, date)
+        }
+    }
+    
+    private func entriesForSelectedDate() -> [JournalEntry] {
+        return entriesForDate(selectedDate)
+    }
+    
+    private func wordCount(_ text: String) -> Int {
+        return text.split(separator: " ").count
+    }
+    
+    // Formatters
+    private let monthYearFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter
+    }()
+    
+    private let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMMM d, yyyy"
+        return formatter
+    }()
+    
+    private let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
-        return formatter.string(from: date)
+        return formatter
+    }()
+}
+
+// Calendar day button
+struct CalendarDayButton: View {
+    let date: Date
+    let isSelected: Bool
+    let hasEntries: Bool
+    let isCurrentMonth: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Text("\(Calendar.current.component(.day, from: date))")
+                    .font(.system(size: 16, weight: isSelected ? .bold : .regular))
+                    .foregroundColor(textColor)
+                
+                // Indicator for entries
+                if hasEntries {
+                    Circle()
+                        .fill(AppColors.accent)
+                        .frame(width: 6, height: 6)
+                } else {
+                    Circle()
+                        .fill(Color.clear)
+                        .frame(width: 6, height: 6)
+                }
+            }
+            .frame(height: 40)
+            .frame(maxWidth: .infinity)
+            .background(isSelected ? AppColors.accent.opacity(0.2) : Color.clear)
+            .cornerRadius(8)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private var textColor: Color {
+        if !isCurrentMonth {
+            return AppColors.textTertiary
+        } else if isSelected {
+            return AppColors.accent
+        } else if isSameDay(date, Date()) {
+            return AppColors.accent
+        } else {
+            return AppColors.textPrimary
+        }
+    }
+    
+    private func isSameDay(_ date1: Date, _ date2: Date) -> Bool {
+        let calendar = Calendar.current
+        return calendar.isDate(date1, inSameDayAs: date2)
     }
 }
 
@@ -134,10 +330,25 @@ struct JournalEntriesView: View {
     NavigationView {
         JournalEntriesView(viewModel: {
             let viewModel = JournalViewModel()
+            // Create sample entries for today
+            let today = Date()
             viewModel.journalEntries = [
-                JournalEntry(text: "Today I had a fantastic meeting with the team. We discussed the new product roadmap."),
-                JournalEntry(text: "Feeling motivated to start the new project tomorrow. Need to prepare the materials.")
+                JournalEntry(text: "Morning reflection: Today I had a fantastic meeting with the team.", date: today),
+                JournalEntry(text: "Evening thoughts: Feeling motivated to start the new project tomorrow.", 
+                             date: Calendar.current.date(byAdding: .hour, value: -5, to: today)!)
             ]
+            // Add an entry for yesterday
+            if let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today) {
+                viewModel.journalEntries.append(
+                    JournalEntry(text: "Yesterday's note: Need to follow up on the client meeting from yesterday.", date: yesterday)
+                )
+            }
+            // Add an entry for last week
+            if let lastWeek = Calendar.current.date(byAdding: .day, value: -7, to: today) {
+                viewModel.journalEntries.append(
+                    JournalEntry(text: "Last week's reflection: The project is progressing well.", date: lastWeek)
+                )
+            }
             return viewModel
         }())
     }

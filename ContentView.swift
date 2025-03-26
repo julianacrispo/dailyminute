@@ -23,7 +23,7 @@ struct ContentView: View {
                 
                 VStack(spacing: 20) {
                     // Title area - more minimal, similar to Eight Sleep
-                    Text("Minutes")
+                    Text("Record")
                         .titleStyle()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 20)
@@ -127,6 +127,8 @@ struct ContentView: View {
                                     TimerDisplay(seconds: Int(viewModel.timeRemaining))
                                 }
                                 .padding(.bottom, 20)
+                                .frame(maxHeight: 100)
+                                .clipped()
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                             }
                             

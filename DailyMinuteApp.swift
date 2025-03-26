@@ -30,30 +30,30 @@ struct MainTabView: View {
     
     var body: some View {
         TabView {
-            // Home/Recording tab
+            // Home/Recording tab - Keep the microphone icon
             ContentView(viewModel: viewModel)
                 .tabItem {
                     Label("Record", systemImage: "mic.fill")
                 }
             
-            // Journal entries tab
+            // Journal entries tab - Change to calendar icon
             NavigationView {
                 JournalEntriesView(viewModel: viewModel)
             }
             .tabItem {
-                Label("Minutes", systemImage: "note.text")
+                Label("Minutes", systemImage: "calendar")
             }
             
-            // Placeholder for stats tab
-            StatsPlaceholderView()
+            // Vibes measurement tab (formerly Score)
+            ScorePlaceholderView()
                 .tabItem {
-                    Label("Stats", systemImage: "chart.bar.fill")
+                    Label("Vibes", systemImage: "gauge")
                 }
             
-            // Placeholder for profile tab
-            ProfilePlaceholderView()
+            // Insights tab (formerly Stats)
+            StatsPlaceholderView()
                 .tabItem {
-                    Label("Profile", systemImage: "person.fill")
+                    Label("Insights", systemImage: "lightbulb.fill")
                 }
         }
         .accentColor(AppColors.accent) // Set accent color for tab bar
@@ -80,20 +80,22 @@ struct StatsPlaceholderView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 20) {
-                Text("Stats")
+                Text("Insights")
                     .titleStyle()
-                    .padding(.top, 40)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 20)
+                    .padding(.horizontal)
                 
                 Spacer()
                 
-                Image(systemName: "chart.line.uptrend.xyaxis")
+                Image(systemName: "lightbulb.fill")
                     .font(.system(size: 80))
                     .foregroundColor(AppColors.textSecondary)
                 
-                Text("Coming Soon")
+                Text("Insights")
                     .headerStyle()
                 
-                Text("Stats and insights will be available here")
+                Text("Insights and trends will be available here")
                     .captionStyle()
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
@@ -125,6 +127,40 @@ struct ProfilePlaceholderView: View {
                     .headerStyle()
                 
                 Text("Profile settings will be available here")
+                    .captionStyle()
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                
+                Spacer()
+            }
+        }
+    }
+}
+
+// Placeholder view for the Score tab
+struct ScorePlaceholderView: View {
+    var body: some View {
+        ZStack {
+            AppColors.background
+                .ignoresSafeArea()
+            
+            VStack(spacing: 20) {
+                Text("Vibes")
+                    .titleStyle()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 20)
+                    .padding(.horizontal)
+                
+                Spacer()
+                
+                Image(systemName: "gauge")
+                    .font(.system(size: 80))
+                    .foregroundColor(AppColors.textSecondary)
+                
+                Text("Vibes")
+                    .headerStyle()
+                
+                Text("A measure of your vibes will appear here")
                     .captionStyle()
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)

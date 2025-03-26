@@ -187,6 +187,8 @@ struct DarkCard<Content: View>: View {
 struct AudioWaveform: View {
     var level: Double
     @State private var animationPhase: Double = 0
+    private let maxBarHeight: CGFloat = 50  // Maximum height constraint for bars
+    private let containerHeight: CGFloat = 60  // Fixed container height
     
     var body: some View {
         HStack(spacing: 4) {
@@ -210,7 +212,8 @@ struct AudioWaveform: View {
                     )
             }
         }
-        .frame(height: 60)  // Keeping the same overall height
+        .frame(height: containerHeight)  // Fixed container height
+        .clipShape(Rectangle())  // Ensure visualization stays within this container
         .onAppear {
             // Start continuous animation with faster cycle
             withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
@@ -256,10 +259,10 @@ struct AudioWaveform: View {
         }
         
         // Apply random variation to height
-        let height = max(baseHeight, abs(CGFloat(combinedWave) * heightMultiplier * peakMultiplier * randomAmplifier))
+        let rawHeight = max(baseHeight, abs(CGFloat(combinedWave) * heightMultiplier * peakMultiplier * randomAmplifier))
         
-        // Apply a subtle random variation to final height
-        return height * CGFloat.random(in: 0.9...1.1)
+        // Apply subtle random variation and enforce maximum height
+        return min(rawHeight * CGFloat.random(in: 0.9...1.1), maxBarHeight)
     }
 }
 
