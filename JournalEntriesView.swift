@@ -4,7 +4,8 @@ struct JournalEntriesView: View {
     @Bindable var viewModel: JournalViewModel
     @State private var selectedDate: Date = Date()
     @State private var currentMonth: Date = Date()
-    @State private var selectedEntry: JournalEntry? = nil
+    @Environment(\.presentationMode) var presentationMode
+    @State private var resetNavigation = false
     
     var body: some View {
         ZStack {
@@ -21,7 +22,7 @@ struct JournalEntriesView: View {
                     .padding(.horizontal)
                 
                 // Calendar view
-                VStack(spacing: 16) {
+                VStack(spacing: 12) {
                     // Month navigation
                     HStack {
                         Button(action: previousMonth) {
@@ -51,7 +52,7 @@ struct JournalEntriesView: View {
                     HStack(spacing: 0) {
                         ForEach(Calendar.current.shortWeekdaySymbols, id: \.self) { day in
                             Text(day)
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(AppColors.textSecondary)
                                 .frame(maxWidth: .infinity)
                         }
@@ -59,7 +60,7 @@ struct JournalEntriesView: View {
                     .padding(.horizontal)
                     
                     // Calendar grid
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 6) {
                         ForEach(daysInMonth(), id: \.self) { date in
                             if let date = date {
                                 CalendarDayButton(
@@ -67,13 +68,9 @@ struct JournalEntriesView: View {
                                     isSelected: isSameDay(date, selectedDate),
                                     hasEntries: hasEntriesForDate(date),
                                     isCurrentMonth: isSameMonth(date, currentMonth),
-                                    action: {
-                                        selectedDate = date
-                                    },
-                                    viewModel: viewModel,
-                                    onEntrySelected: { entry in
-                                        selectedEntry = entry
-                                    }
+                                    action: { selectedDate = date },
+                                    entriesForDay: entriesForDate(date),
+                                    viewModel: viewModel
                                 )
                             } else {
                                 // Empty space for days not in current month
@@ -84,7 +81,7 @@ struct JournalEntriesView: View {
                     }
                     .padding(.horizontal)
                 }
-                .padding(.vertical)
+                .padding(.vertical, 12)
                 .background(AppColors.cardBackground)
                 .cornerRadius(16)
                 .padding(.horizontal)
@@ -178,22 +175,9 @@ struct JournalEntriesView: View {
                 }
             }
             .navigationBarHidden(true)
-            .background(
-                // Hidden navigation link that will be activated programmatically
-                NavigationLink(
-                    destination: Group {
-                        if let entry = selectedEntry {
-                            JournalEntryDetailView(entry: entry, viewModel: viewModel)
-                        }
-                    },
-                    isActive: Binding(
-                        get: { selectedEntry != nil },
-                        set: { if !$0 { selectedEntry = nil } }
-                    )
-                ) {
-                    EmptyView()
-                }
-            )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ResetMinutesNavigation"))) { _ in
+            presentationMode.wrappedValue.dismiss()
         }
     }
     
@@ -303,77 +287,82 @@ struct CalendarDayButton: View {
     let hasEntries: Bool
     let isCurrentMonth: Bool
     let action: () -> Void
+    let entriesForDay: [JournalEntry]
     let viewModel: JournalViewModel
-    let onEntrySelected: (JournalEntry) -> Void
     
     var body: some View {
-        Button(action: {
-            // Select the day first (updates UI)
-            action()
-            
-            // If there are entries, navigate to the first one
-            if hasEntries {
-                navigateToFirstEntry()
+        Group {
+            if hasEntries && !entriesForDay.isEmpty {
+                // For days with entries, use NavigationLink to DayEntriesView
+                NavigationLink(destination: DayEntriesView(date: date, viewModel: viewModel)) {
+                    dayContent
+                }
+                .buttonStyle(PlainButtonStyle())
+                .simultaneousGesture(TapGesture().onEnded {
+                    // Still perform the selection action when tapped
+                    action()
+                })
+            } else {
+                // For days without entries, just use a regular button
+                Button(action: action) {
+                    dayContent
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-        }) {
-            VStack(spacing: 4) {
-                // Day number inside a circle
-                ZStack {
-                    // Background circle - filled for days with entries
+        }
+    }
+    
+    private var dayContent: some View {
+        VStack(spacing: 2) {
+            // Circle above the number
+            ZStack {
+                // Base circle (empty or filled)
+                Circle()
+                    .fill(hasEntries ? AppColors.accent : Color.clear)
+                    .frame(width: 28, height: 28)
+                
+                // White outline for selected day
+                if isSelected {
                     Circle()
-                        .fill(backgroundFill)
-                        .frame(width: 36, height: 36)
-                    
-                    // Day number text
-                    Text("\(Calendar.current.component(.day, from: date))")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(textColor)
+                        .stroke(Color.white, lineWidth: 1.5)
+                        .frame(width: 28, height: 28)
+                } else {
+                    // Non-selected days show empty circle outline
+                    Circle()
+                        .stroke(Color.gray.opacity(0.5), lineWidth: 0.5)
+                        .frame(width: 28, height: 28)
                 }
             }
-            .frame(height: 44)
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
-    // Function to navigate to the first entry for this day
-    private func navigateToFirstEntry() {
-        if hasEntries {
-            let entriesForDay = viewModel.journalEntries.filter { entry in
-                Calendar.current.isDate(entry.date, inSameDayAs: date)
-            }.sorted(by: { $0.date < $1.date })
             
-            if let firstEntry = entriesForDay.first {
-                onEntrySelected(firstEntry)
+            // Day number with underline for current day
+            VStack(spacing: 0) {
+                Text("\(Calendar.current.component(.day, from: date))")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(textColor)
+                
+                // Underline for current day
+                if isSameDay(date, Date()) && isCurrentMonth {
+                    Rectangle()
+                        .fill(AppColors.accent)
+                        .frame(width: 14, height: 1.5)
+                        .padding(.top, 1)
+                } else {
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(width: 14, height: 1.5)
+                        .padding(.top, 1)
+                }
             }
         }
+        .frame(height: 44)
+        .frame(maxWidth: .infinity)
     }
     
-    // Determine the fill color for the day circle
-    private var backgroundFill: Color {
-        if !isCurrentMonth {
-            return Color.clear
-        } else if isSelected {
-            return AppColors.accent
-        } else if hasEntries {
-            return AppColors.accent
-        } else if isSameDay(date, Date()) {
-            return AppColors.accent.opacity(0.2)
-        } else {
-            return Color.clear
-        }
-    }
-    
-    // Determine text color based on state
     private var textColor: Color {
         if !isCurrentMonth {
             return AppColors.textTertiary
-        } else if isSelected || hasEntries {
-            return Color.white // White text on purple background
-        } else if isSameDay(date, Date()) {
-            return AppColors.accent // Purple text for today
         } else {
-            return AppColors.textPrimary
+            return AppColors.textSecondary
         }
     }
     
@@ -381,6 +370,149 @@ struct CalendarDayButton: View {
         let calendar = Calendar.current
         return calendar.isDate(date1, inSameDayAs: date2)
     }
+}
+
+// Day Entries View - Shows all entries for a specific day
+struct DayEntriesView: View {
+    let date: Date
+    @Bindable var viewModel: JournalViewModel
+    @Environment(\.presentationMode) var presentationMode
+    
+    var body: some View {
+        ZStack {
+            // Background
+            AppColors.background
+                .ignoresSafeArea()
+            
+            VStack(alignment: .leading, spacing: 0) {
+                // Simplified header without back button
+                Text(dayFormatter.string(from: date))
+                    .font(.system(size: 20, weight: .bold)) // Smaller font
+                    .foregroundColor(AppColors.textPrimary)
+                    .lineLimit(1) // Ensure it stays on one line
+                    .padding(.horizontal)
+                    .padding(.top, 20)
+                    .padding(.bottom, 10)
+                
+                // Number of minutes
+                Text("\(entriesForDate().count) minutes")
+                    .captionStyle()
+                    .padding(.horizontal)
+                    .padding(.bottom, 20)
+                
+                if entriesForDate().isEmpty {
+                    Spacer()
+                    VStack(spacing: 20) {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.system(size: 60))
+                            .foregroundColor(AppColors.textSecondary)
+                        
+                        Text("No minutes recorded")
+                            .headerStyle()
+                        
+                        Text("Record minutes to see them appear here for this day")
+                            .captionStyle()
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 40)
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            ForEach(entriesForDate().sorted(by: { $0.date > $1.date })) { entry in
+                                NavigationLink(destination: JournalEntryDetailView(entry: entry, viewModel: viewModel)) {
+                                    DarkCard {
+                                        VStack(alignment: .leading, spacing: 12) {
+                                            // Time and indicators
+                                            HStack {
+                                                Image(systemName: "waveform")
+                                                    .foregroundColor(AppColors.textSecondary)
+                                                
+                                                Text(timeFormatter.string(from: entry.date))
+                                                    .captionStyle()
+                                                
+                                                Spacer()
+                                                
+                                                // Word count indicator
+                                                HStack(spacing: 4) {
+                                                    Text("\(wordCount(entry.text))")
+                                                        .captionStyle()
+                                                    
+                                                    Image(systemName: "text.word.count")
+                                                        .font(.system(size: 12))
+                                                        .foregroundColor(AppColors.textSecondary)
+                                                }
+                                            }
+                                            
+                                            DarkDivider()
+                                            
+                                            // Text preview
+                                            Text(entry.text)
+                                                .bodyStyle()
+                                                .lineLimit(2)
+                                                .multilineTextAlignment(.leading)
+                                                .padding(.bottom, 4)
+                                            
+                                            // Bottom indicator
+                                            HStack {
+                                                Spacer()
+                                                
+                                                Image(systemName: "chevron.right")
+                                                    .foregroundColor(AppColors.textSecondary)
+                                                    .font(.system(size: 14, weight: .medium))
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            .padding(.bottom, 16)
+                        }
+                    }
+                }
+            }
+            .navigationBarHidden(true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ResetMinutesNavigation"))) { _ in
+            presentationMode.wrappedValue.dismiss()
+        }
+        .onAppear {
+            // Tell the parent that navigation is active
+            NotificationCenter.default.post(name: NSNotification.Name("JournalNavigationActive"), object: nil)
+        }
+    }
+    
+    // Helper functions
+    private func entriesForDate() -> [JournalEntry] {
+        return viewModel.journalEntries.filter { entry in
+            isSameDay(entry.date, date)
+        }
+    }
+    
+    private func wordCount(_ text: String) -> Int {
+        return text.split(separator: " ").count
+    }
+    
+    private func isSameDay(_ date1: Date, _ date2: Date) -> Bool {
+        let calendar = Calendar.current
+        return calendar.isDate(date1, inSameDayAs: date2)
+    }
+    
+    // Formatters
+    private let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMM d, yyyy" // Shortened month format
+        return formatter
+    }()
+    
+    private let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter
+    }()
 }
 
 #Preview {

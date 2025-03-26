@@ -50,11 +50,8 @@ struct JournalEntryDetailView: View {
                         .foregroundColor(AppColors.accent)
                         .padding(10)
                     } else {
-                        Button("Edit") {
-                            isEditing = true
-                        }
-                        .foregroundColor(AppColors.accent)
-                        .padding(10)
+                        Spacer()
+                            .frame(width: 50)
                     }
                 }
                 .padding(.horizontal, 10)
@@ -91,6 +88,13 @@ struct JournalEntryDetailView: View {
                                     Text("Entry")
                                         .headerStyle()
                                     
+                                    if !isEditing {
+                                        Image(systemName: "pencil")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(AppColors.textSecondary)
+                                            .padding(.leading, 4)
+                                    }
+                                    
                                     Spacer()
                                     
                                     // Time indicator
@@ -121,6 +125,10 @@ struct JournalEntryDetailView: View {
                                         .bodyStyle()
                                         .lineSpacing(6)
                                         .frame(maxWidth: .infinity, alignment: .leading)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            isEditing = true
+                                        }
                                 }
                                 
                                 // Audio recording indicator in Eight Sleep style
@@ -214,6 +222,13 @@ struct JournalEntryDetailView: View {
             }
         )
         .preferredColorScheme(.dark)
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ResetMinutesNavigation"))) { _ in
+            dismiss()
+        }
+        .onAppear {
+            // Tell the parent that navigation is active
+            NotificationCenter.default.post(name: NSNotification.Name("JournalNavigationActive"), object: nil)
+        }
     }
     
     private var wordCount: Int {

@@ -27,14 +27,17 @@ struct DailyMinuteApp: App {
 // Main tab view for navigation between app sections
 struct MainTabView: View {
     @ObservedObject var viewModel: JournalViewModel
+    @State private var selectedTab = 0
+    @State private var journalNavigationActive = false
     
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             // Home/Recording tab - Keep the microphone icon
             ContentView(viewModel: viewModel)
                 .tabItem {
                     Label("Record", systemImage: "mic.fill")
                 }
+                .tag(0)
             
             // Journal entries tab - Change to calendar icon
             NavigationView {
@@ -43,18 +46,32 @@ struct MainTabView: View {
             .tabItem {
                 Label("Minutes", systemImage: "calendar")
             }
+            .tag(1)
+            .onChange(of: selectedTab) { newValue in
+                // If we're switching to the Minutes tab and we're already on it
+                // (meaning a secondary navigation is active), pop to root
+                if newValue == 1 && journalNavigationActive {
+                    journalNavigationActive = false
+                    // Use a slight delay to avoid conflicts with the tab change animation
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        NotificationCenter.default.post(name: NSNotification.Name("ResetMinutesNavigation"), object: nil)
+                    }
+                }
+            }
             
             // Vibes measurement tab (formerly Score)
             ScorePlaceholderView()
                 .tabItem {
                     Label("Vibes", systemImage: "gauge")
                 }
+                .tag(2)
             
             // Insights tab (formerly Stats)
             StatsPlaceholderView()
                 .tabItem {
                     Label("Insights", systemImage: "lightbulb.fill")
                 }
+                .tag(3)
         }
         .accentColor(AppColors.accent) // Set accent color for tab bar
         .onAppear {
@@ -69,6 +86,10 @@ struct MainTabView: View {
             }
         }
         .preferredColorScheme(.dark) // Using explicit enum case
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("JournalNavigationActive"))) { _ in
+            // Set the flag when navigation occurs in the journal section
+            journalNavigationActive = true
+        }
     }
 }
 
