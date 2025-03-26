@@ -13,6 +13,10 @@ import Accelerate
     var audioLevel: Double = 0.0
     var activeTranscriptionMode: TranscriptionMode?
     
+    // Navigation state properties
+    var selectedEntry: JournalEntry? = nil
+    var selectedDay: Date? = nil
+    
     enum TranscriptionMode {
         case recording    // For new recordings
         case editing(String)  // For editing existing text, with initial text

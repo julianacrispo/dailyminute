@@ -4,8 +4,6 @@ struct JournalEntriesView: View {
     @Bindable var viewModel: JournalViewModel
     @State private var selectedDate: Date = Date()
     @State private var currentMonth: Date = Date()
-    @Environment(\.presentationMode) var presentationMode
-    @State private var resetNavigation = false
     
     var body: some View {
         ZStack {
@@ -63,15 +61,58 @@ struct JournalEntriesView: View {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 6) {
                         ForEach(daysInMonth(), id: \.self) { date in
                             if let date = date {
-                                CalendarDayButton(
-                                    date: date,
-                                    isSelected: isSameDay(date, selectedDate),
-                                    hasEntries: hasEntriesForDate(date),
-                                    isCurrentMonth: isSameMonth(date, currentMonth),
-                                    action: { selectedDate = date },
-                                    entriesForDay: entriesForDate(date),
-                                    viewModel: viewModel
-                                )
+                                if hasEntriesForDate(date) {
+                                    // Days with entries - use navigation based on entry count
+                                    let entriesForDay = entriesForDate(date).sorted(by: { $0.date > $1.date })
+                                    if entriesForDay.count == 1 {
+                                        // Only one entry - navigate directly to it
+                                        Button {
+                                            selectedDate = date
+                                            // Directly navigate to the entry
+                                            if let firstEntry = entriesForDay.first {
+                                                let _ = withAnimation {
+                                                    // This causes navigation to the entry detail
+                                                    viewModel.selectedEntry = firstEntry
+                                                }
+                                            }
+                                        } label: {
+                                            CalendarDayButton(
+                                                date: date,
+                                                isSelected: isSameDay(date, selectedDate),
+                                                hasEntries: true,
+                                                isCurrentMonth: isSameMonth(date, currentMonth),
+                                                action: { }
+                                            )
+                                        }
+                                    } else {
+                                        // Multiple entries - navigate to day view
+                                        Button {
+                                            selectedDate = date
+                                            // Directly navigate to the day view
+                                            let _ = withAnimation {
+                                                // This causes navigation to the day view
+                                                viewModel.selectedDay = date
+                                            }
+                                        } label: {
+                                            CalendarDayButton(
+                                                date: date,
+                                                isSelected: isSameDay(date, selectedDate),
+                                                hasEntries: true,
+                                                isCurrentMonth: isSameMonth(date, currentMonth),
+                                                action: { }
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    // Days without entries - just selection
+                                    CalendarDayButton(
+                                        date: date,
+                                        isSelected: isSameDay(date, selectedDate),
+                                        hasEntries: false,
+                                        isCurrentMonth: isSameMonth(date, currentMonth),
+                                        action: { selectedDate = date }
+                                    )
+                                }
                             } else {
                                 // Empty space for days not in current month
                                 Color.clear
@@ -122,7 +163,10 @@ struct JournalEntriesView: View {
                     } else {
                         ScrollView {
                             ForEach(entriesForSelectedDate().sorted(by: { $0.date > $1.date })) { entry in
-                                NavigationLink(destination: JournalEntryDetailView(entry: entry, viewModel: viewModel)) {
+                                Button {
+                                    // Navigate to entry detail
+                                    viewModel.selectedEntry = entry
+                                } label: {
                                     DarkCard {
                                         VStack(alignment: .leading, spacing: 12) {
                                             // Time and indicators
@@ -175,9 +219,6 @@ struct JournalEntriesView: View {
                 }
             }
             .navigationBarHidden(true)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ResetMinutesNavigation"))) { _ in
-            presentationMode.wrappedValue.dismiss()
         }
     }
     
@@ -287,29 +328,12 @@ struct CalendarDayButton: View {
     let hasEntries: Bool
     let isCurrentMonth: Bool
     let action: () -> Void
-    let entriesForDay: [JournalEntry]
-    let viewModel: JournalViewModel
     
     var body: some View {
-        Group {
-            if hasEntries && !entriesForDay.isEmpty {
-                // For days with entries, use NavigationLink to DayEntriesView
-                NavigationLink(destination: DayEntriesView(date: date, viewModel: viewModel)) {
-                    dayContent
-                }
-                .buttonStyle(PlainButtonStyle())
-                .simultaneousGesture(TapGesture().onEnded {
-                    // Still perform the selection action when tapped
-                    action()
-                })
-            } else {
-                // For days without entries, just use a regular button
-                Button(action: action) {
-                    dayContent
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
+        Button(action: action) {
+            dayContent
         }
+        .buttonStyle(PlainButtonStyle())
     }
     
     private var dayContent: some View {
@@ -376,7 +400,6 @@ struct CalendarDayButton: View {
 struct DayEntriesView: View {
     let date: Date
     @Bindable var viewModel: JournalViewModel
-    @Environment(\.presentationMode) var presentationMode
     
     var body: some View {
         ZStack {
@@ -387,9 +410,9 @@ struct DayEntriesView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Simplified header without back button
                 Text(dayFormatter.string(from: date))
-                    .font(.system(size: 20, weight: .bold)) // Smaller font
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundColor(AppColors.textPrimary)
-                    .lineLimit(1) // Ensure it stays on one line
+                    .lineLimit(1)
                     .padding(.horizontal)
                     .padding(.top, 20)
                     .padding(.bottom, 10)
@@ -422,7 +445,10 @@ struct DayEntriesView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             ForEach(entriesForDate().sorted(by: { $0.date > $1.date })) { entry in
-                                NavigationLink(destination: JournalEntryDetailView(entry: entry, viewModel: viewModel)) {
+                                Button {
+                                    // Navigate to entry detail
+                                    viewModel.selectedEntry = entry
+                                } label: {
                                     DarkCard {
                                         VStack(alignment: .leading, spacing: 12) {
                                             // Time and indicators
@@ -475,13 +501,6 @@ struct DayEntriesView: View {
                 }
             }
             .navigationBarHidden(true)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ResetMinutesNavigation"))) { _ in
-            presentationMode.wrappedValue.dismiss()
-        }
-        .onAppear {
-            // Tell the parent that navigation is active
-            NotificationCenter.default.post(name: NSNotification.Name("JournalNavigationActive"), object: nil)
         }
     }
     

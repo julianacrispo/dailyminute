@@ -28,7 +28,7 @@ struct DailyMinuteApp: App {
 struct MainTabView: View {
     @ObservedObject var viewModel: JournalViewModel
     @State private var selectedTab = 0
-    @State private var journalNavigationActive = false
+    @State private var journalNavigationPath = NavigationPath()
     
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -39,23 +39,39 @@ struct MainTabView: View {
                 }
                 .tag(0)
             
-            // Journal entries tab - Change to calendar icon
-            NavigationView {
+            // Journal entries tab - Using NavigationStack with path
+            NavigationStack(path: $journalNavigationPath) {
                 JournalEntriesView(viewModel: viewModel)
+                    .navigationDestination(for: Date.self) { date in
+                        DayEntriesView(date: date, viewModel: viewModel)
+                    }
+                    .navigationDestination(for: JournalEntry.self) { entry in
+                        JournalEntryDetailView(entry: entry, viewModel: viewModel)
+                    }
             }
             .tabItem {
                 Label("Minutes", systemImage: "calendar")
             }
             .tag(1)
             .onChange(of: selectedTab) { newValue in
-                // If we're switching to the Minutes tab and we're already on it
-                // (meaning a secondary navigation is active), pop to root
-                if newValue == 1 && journalNavigationActive {
-                    journalNavigationActive = false
-                    // Use a slight delay to avoid conflicts with the tab change animation
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        NotificationCenter.default.post(name: NSNotification.Name("ResetMinutesNavigation"), object: nil)
-                    }
+                // If we're switching to the Minutes tab and we're not at the root
+                if newValue == 1 && !journalNavigationPath.isEmpty {
+                    // Clear the navigation path to return to the root
+                    journalNavigationPath = NavigationPath()
+                    viewModel.selectedDay = nil
+                    viewModel.selectedEntry = nil
+                }
+            }
+            // Observe selectedEntry changes to update navigation
+            .onChange(of: viewModel.selectedEntry) { entry in
+                if let entry = entry {
+                    journalNavigationPath.append(entry)
+                }
+            }
+            // Observe selectedDay changes to update navigation
+            .onChange(of: viewModel.selectedDay) { day in
+                if let day = day {
+                    journalNavigationPath.append(day)
                 }
             }
             
@@ -86,10 +102,6 @@ struct MainTabView: View {
             }
         }
         .preferredColorScheme(.dark) // Using explicit enum case
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("JournalNavigationActive"))) { _ in
-            // Set the flag when navigation occurs in the journal section
-            journalNavigationActive = true
-        }
     }
 }
 

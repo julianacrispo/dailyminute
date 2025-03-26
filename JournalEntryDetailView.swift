@@ -222,13 +222,6 @@ struct JournalEntryDetailView: View {
             }
         )
         .preferredColorScheme(.dark)
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ResetMinutesNavigation"))) { _ in
-            dismiss()
-        }
-        .onAppear {
-            // Tell the parent that navigation is active
-            NotificationCenter.default.post(name: NSNotification.Name("JournalNavigationActive"), object: nil)
-        }
     }
     
     private var wordCount: Int {
