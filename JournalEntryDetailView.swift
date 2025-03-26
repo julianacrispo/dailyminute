@@ -18,73 +18,162 @@ struct JournalEntryDetailView: View {
     }
     
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                // Date header
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(formattedDate)
-                        .font(.headline)
-                        .foregroundColor(.primary)
+        ZStack {
+            // Background
+            AppColors.background
+                .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Header bar in Eight Sleep style
+                HStack {
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(AppColors.textPrimary)
+                            .padding(10)
+                    }
                     
-                    Text(formattedTime)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                    Spacer()
+                    
+                    Text("Minute")
+                        .headerStyle()
+                    
+                    Spacer()
+                    
+                    if isEditing {
+                        Button("Done") {
+                            stopTranscribing()
+                            saveChanges()
+                        }
+                        .foregroundColor(AppColors.accent)
+                        .padding(10)
+                    } else {
+                        Button("Edit") {
+                            isEditing = true
+                        }
+                        .foregroundColor(AppColors.accent)
+                        .padding(10)
+                    }
                 }
-                .padding(.bottom, 8)
+                .padding(.horizontal, 10)
+                .padding(.top, 10)
                 
-                Divider()
-                
-                // Journal content - clean and floating text
-                if isEditing {
-                    TextEditor(text: $editedText)
-                        .font(.body)
-                        .lineSpacing(6)
-                        .frame(maxWidth: .infinity, minHeight: 200, maxHeight: .infinity)
-                        .scrollContentBackground(.hidden)
-                        .background(Color.clear)
-                        .focused($isFocused)
-                        .onChange(of: isEditing) { newValue in
-                            if newValue {
-                                isFocused = true
-                                startTranscribing()
-                            } else {
-                                stopTranscribing()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        // Date header in Eight Sleep style
+                        DarkCard {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(formattedDayOfWeek)
+                                        .headerStyle()
+                                    
+                                    Text(formattedDateAndTime)
+                                        .captionStyle()
+                                }
+                                
+                                Spacer()
+                                
+                                // Day/night indicator (placeholder)
+                                Image(systemName: "moon.stars.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(AppColors.textSecondary)
                             }
                         }
-                } else {
-                    Text(entry.text)
-                        .font(.body)
-                        .lineSpacing(6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                
-                Spacer()
-            }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text("Minute")
-                    .font(.system(size: 20))
-                    .foregroundColor(Color(.systemGray))
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if isEditing {
-                    Button("Done") {
-                        stopTranscribing()
-                        saveChanges()
+                        .padding(.horizontal)
+                        .padding(.top, 20)
+                        
+                        // Journal content in dark theme
+                        DarkCard {
+                            VStack(alignment: .leading, spacing: 16) {
+                                HStack {
+                                    Text("Entry")
+                                        .headerStyle()
+                                    
+                                    Spacer()
+                                    
+                                    // Time indicator
+                                    Text(formattedTime)
+                                        .captionStyle()
+                                }
+                                
+                                DarkDivider()
+                                
+                                if isEditing {
+                                    TextEditor(text: $editedText)
+                                        .bodyStyle()
+                                        .lineSpacing(6)
+                                        .frame(minHeight: 200)
+                                        .scrollContentBackground(.hidden)
+                                        .background(Color.clear)
+                                        .focused($isFocused)
+                                        .onChange(of: isEditing) { newValue in
+                                            if newValue {
+                                                isFocused = true
+                                                startTranscribing()
+                                            } else {
+                                                stopTranscribing()
+                                            }
+                                        }
+                                } else {
+                                    Text(entry.text)
+                                        .bodyStyle()
+                                        .lineSpacing(6)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                
+                                // Audio recording indicator in Eight Sleep style
+                                if isEditing && isTranscribing {
+                                    HStack {
+                                        AudioWaveform(level: viewModel.audioLevel)
+                                            .frame(width: 120, height: 24)
+                                        
+                                        Text("Listening...")
+                                            .captionStyle()
+                                        
+                                        Spacer()
+                                    }
+                                    .padding(.top, 8)
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                        
+                        // Additional metrics in Eight Sleep style
+                        DarkCard {
+                            VStack(alignment: .leading, spacing: 16) {
+                                Text("Metrics")
+                                    .headerStyle()
+                                
+                                DarkDivider()
+                                
+                                HStack(spacing: 30) {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text("Word count")
+                                            .captionStyle()
+                                        Text("\(wordCount)")
+                                            .headerStyle()
+                                    }
+                                    
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text("Duration")
+                                            .captionStyle()
+                                        Text("1 min")
+                                            .headerStyle()
+                                    }
+                                    
+                                    Spacer()
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
                     }
-                    .foregroundColor(Color(.systemGray))
-                } else {
-                    Button("Edit") {
-                        isEditing = true
-                    }
-                    .foregroundColor(Color(.systemGray))
+                    .padding(.bottom, 20)
                 }
             }
         }
+        .navigationBarHidden(true)
         .overlay(
             Group {
                 if showSaveConfirmation {
@@ -94,15 +183,15 @@ struct JournalEntryDetailView: View {
                         
                         HStack {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
+                                .foregroundColor(AppColors.accent)
                             Text("Changes saved")
-                                .foregroundColor(.black)
+                                .foregroundColor(AppColors.textPrimary)
                                 .font(.headline)
                         }
                         .padding()
-                        .background(Color(.systemBackground).opacity(0.95))
+                        .background(AppColors.cardBackground.opacity(0.95))
                         .cornerRadius(10)
-                        .shadow(radius: 3)
+                        .shadow(color: Color.black.opacity(0.3), radius: 10)
                         .padding(.bottom, 30)
                         
                         Spacer(minLength: 50)
@@ -124,6 +213,12 @@ struct JournalEntryDetailView: View {
                 }
             }
         )
+        .preferredColorScheme(.dark)
+    }
+    
+    private var wordCount: Int {
+        let words = entry.text.split(separator: " ")
+        return words.count
     }
     
     private func startTranscribing() {
@@ -153,17 +248,21 @@ struct JournalEntryDetailView: View {
         }
     }
     
-    private var formattedDate: String {
+    private var formattedDayOfWeek: String {
         let formatter = DateFormatter()
-        formatter.dateStyle = .long
-        formatter.timeStyle = .none
+        formatter.dateFormat = "EEEE"
+        return formatter.string(from: entry.date)
+    }
+    
+    private var formattedDateAndTime: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM d, yyyy"
         return formatter.string(from: entry.date)
     }
     
     private var formattedTime: String {
         let formatter = DateFormatter()
-        formatter.dateStyle = .none
-        formatter.timeStyle = .short
+        formatter.dateFormat = "h:mm a"
         return formatter.string(from: entry.date)
     }
 }
@@ -175,4 +274,5 @@ struct JournalEntryDetailView: View {
             viewModel: JournalViewModel()
         )
     }
+    .preferredColorScheme(.dark)
 } 

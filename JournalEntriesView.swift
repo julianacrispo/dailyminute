@@ -4,80 +4,128 @@ struct JournalEntriesView: View {
     @Bindable var viewModel: JournalViewModel
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Title area - centered
-            Text("Your minutes")
-                .font(.system(size: 20))
-                .foregroundColor(Color(.systemGray))
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.horizontal)
-                .padding(.top, 20)
-                .padding(.bottom, 24)
+        ZStack {
+            // Background
+            AppColors.background
+                .ignoresSafeArea()
             
-            if viewModel.journalEntries.isEmpty {
-                Spacer()
-                VStack(spacing: 16) {
-                    Image(systemName: "note.text")
-                        .font(.system(size: 50))
-                        .foregroundColor(.secondary)
-                        .padding()
-                    
-                    Text("No minutes yet")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                    
-                    Text("Your recorded minutes will appear here")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary.opacity(0.8))
-                }
-                Spacer()
-            } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(viewModel.journalEntries.sorted(by: { $0.date > $1.date })) { entry in
-                            NavigationLink(destination: JournalEntryDetailView(entry: entry, viewModel: viewModel)) {
-                                HStack(alignment: .center, spacing: 16) {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text(formattedDate(entry.date))
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
-                                            .foregroundColor(.black)
-                                        
-                                        Text(entry.text)
-                                            .font(.body)
-                                            .foregroundColor(.primary)
-                                            .lineLimit(3)
-                                            .multilineTextAlignment(.leading)
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    Image(systemName: "chevron.right")
-                                        .foregroundColor(Color(.systemGray3))
-                                        .font(.system(size: 14, weight: .semibold))
-                                }
-                                .padding(.vertical, 16)
-                                .padding(.horizontal)
-                            }
+            VStack(spacing: 0) {
+                // Title area - left aligned like Eight Sleep
+                Text("Minutes")
+                    .titleStyle()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 20)
+                    .padding(.horizontal)
+                
+                if viewModel.journalEntries.isEmpty {
+                    Spacer()
+                    VStack(spacing: 24) {
+                        Image(systemName: "note.text")
+                            .font(.system(size: 60))
+                            .foregroundColor(AppColors.textSecondary)
+                            .padding()
+                        
+                        Text("No minutes yet")
+                            .headerStyle()
+                        
+                        Text("Your recorded minutes will appear here")
+                            .captionStyle()
+                    }
+                    .padding(40)
+                    Spacer()
+                } else {
+                    // Tonight's routine card - Eight Sleep style
+                    DarkCard {
+                        HStack {
+                            Text("Tonight's minutes")
+                                .headerStyle()
                             
-                            if entry.id != viewModel.journalEntries.sorted(by: { $0.date > $1.date }).last?.id {
-                                Divider()
+                            Spacer()
+                            
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(AppColors.textSecondary)
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 10)
+                    
+                    // Journal entries with Eight Sleep card style
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            // Section header
+                            HStack {
+                                Text("Weekly minutes")
+                                    .headerStyle()
+                                
+                                Spacer()
+                                
+                                Image(systemName: "plus")
+                                    .foregroundColor(AppColors.textPrimary)
+                                    .font(.system(size: 18, weight: .medium))
+                            }
+                            .padding(.horizontal)
+                            .padding(.top, 10)
+                            
+                            // Entry cards
+                            ForEach(viewModel.journalEntries.sorted(by: { $0.date > $1.date })) { entry in
+                                NavigationLink(destination: JournalEntryDetailView(entry: entry, viewModel: viewModel)) {
+                                    DarkCard {
+                                        VStack(alignment: .leading, spacing: 12) {
+                                            // Date and indicators
+                                            HStack {
+                                                Image(systemName: "waveform")
+                                                    .foregroundColor(AppColors.textSecondary)
+                                                
+                                                Text(formatTime(entry.date))
+                                                    .captionStyle()
+                                                
+                                                Spacer()
+                                                
+                                                Text(formatDate(entry.date))
+                                                    .captionStyle()
+                                            }
+                                            
+                                            DarkDivider()
+                                            
+                                            // Text preview
+                                            Text(entry.text)
+                                                .bodyStyle()
+                                                .lineLimit(2)
+                                                .multilineTextAlignment(.leading)
+                                                .padding(.bottom, 4)
+                                            
+                                            // Bottom indicator
+                                            HStack {
+                                                Spacer()
+                                                
+                                                Image(systemName: "chevron.right")
+                                                    .foregroundColor(AppColors.textSecondary)
+                                                    .font(.system(size: 14, weight: .medium))
+                                            }
+                                        }
+                                    }
                                     .padding(.horizontal)
+                                }
+                                .buttonStyle(PlainButtonStyle())
                             }
                         }
                     }
                 }
-                .background(Color.white)
             }
+            .navigationBarHidden(true)
         }
-        .background(Color.white)
-        .navigationBarTitleDisplayMode(.inline)
     }
     
-    private func formattedDate(_ date: Date) -> String {
+    private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
+        formatter.dateFormat = "EEEE"
+        return formatter.string(from: date)
+    }
+    
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
         return formatter.string(from: date)
     }
 }
@@ -93,4 +141,5 @@ struct JournalEntriesView: View {
             return viewModel
         }())
     }
+    .preferredColorScheme(.dark)
 } 

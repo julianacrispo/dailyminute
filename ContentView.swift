@@ -11,165 +11,189 @@ import Speech
 struct ContentView: View {
     @Bindable var viewModel: JournalViewModel
     @State private var showSuccessAnimation = false
+    @State private var showWaveform = false
+    @State private var showTranscription = false
     
     var body: some View {
         NavigationView {
-            VStack {
-                // Title area - centered, "Journal" removed
-                Text("Hey Juliana, what are you thinking?")
-                    .font(.system(size: 20))
-                    .foregroundColor(Color(.systemGray))
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, 20)
-                    .padding(.bottom, 10)
+            ZStack {
+                // Background
+                AppColors.background
+                    .ignoresSafeArea()
                 
-                if viewModel.transcriptionInProgress {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                            .padding()
-                        
-                        Text("Saving minute...")
-                            .font(.headline)
-                            .foregroundColor(Color(.systemGray))
-                    }
-                    .padding(.vertical)
-                } else if showSuccessAnimation {
-                    // Success animation
-                    VStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(.systemGray6))
-                                .frame(width: 100, height: 100)
-                            
-                            Image(systemName: "checkmark.circle.fill")
-                                .resizable()
-                                .frame(width: 70, height: 70)
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [Color.black, Color(.systemGray2)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        }
-                        
-                        Text("Minute saved!")
-                            .font(.headline)
-                            .foregroundColor(Color(.systemGray))
-                    }
-                    .padding(.vertical)
-                    .transition(.opacity)
-                    .onAppear {
-                        // Provide haptic feedback
-                        let generator = UINotificationFeedbackGenerator()
-                        generator.notificationOccurred(.success)
-                        
-                        // Auto-dismiss the success animation after a delay
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                showSuccessAnimation = false
-                            }
-                        }
-                    }
-                } else {
-                    // Recording area - always visible at top when not recording
-                    ZStack {
-                        Circle()
-                            .stroke(lineWidth: 4)
-                            .opacity(0.2)
-                            .foregroundColor(Color(.systemGray3))
-                        
-                        Circle()
-                            .trim(from: 0.0, to: viewModel.isRecording ? max(0, min(1, CGFloat(viewModel.timeRemaining / 60.0))) : 1.0)
-                            .stroke(style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-                            .foregroundColor(Color(.systemGray))
-                            .rotationEffect(Angle(degrees: 270.0))
-                            .animation(.linear(duration: 0.1), value: viewModel.timeRemaining)
-                        
-                        Button(action: {
-                            if viewModel.isRecording {
-                                viewModel.stopTranscription()
-                            } else {
-                                viewModel.startTranscription(mode: .recording) { text in
-                                    // Text updates will be handled by the ViewModel
-                                }
-                            }
-                        }) {
-                            Image(systemName: viewModel.isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 80, height: 80)
-                                .foregroundStyle(
-                                    viewModel.isRecording ?
-                                    LinearGradient(
-                                        colors: [Color(.systemGray), Color(.systemGray2)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ) :
-                                    LinearGradient(
-                                        colors: [Color.black, Color(.systemGray2)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        }
-                    }
-                    .frame(width: 150, height: 150)
+                VStack(spacing: 20) {
+                    // Title area - more minimal, similar to Eight Sleep
+                    Text("Minutes")
+                        .titleStyle()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 20)
+                        .padding(.horizontal)
                     
-                    // Timer text - shows during recording
-                    if viewModel.isRecording {
-                        VStack(spacing: 10) {
-                            // Dynamic waveform visualization
-                            HStack(spacing: 3) {
-                                ForEach(0..<20) { index in
-                                    RoundedRectangle(cornerRadius: 1)
-                                        .fill(Color(.systemGray))
-                                        .frame(width: 2, height: 20)
-                                        .scaleEffect(
-                                            y: 0.1 + (viewModel.audioLevel * 
-                                                (sin(Double(index) / 2 + Date().timeIntervalSince1970 * 5) * 0.5 +
-                                                cos(Double(index) / 3 + Date().timeIntervalSince1970 * 4) * 0.3 +
-                                                sin(Double(index) + Date().timeIntervalSince1970 * 6) * 0.2) * 
-                                                (viewModel.audioLevel > 0.1 ? 1.0 : 0.2)
-                                            ),
-                                            anchor: .center
-                                        )
-                                        .animation(
-                                            Animation.spring(response: 0.1, dampingFraction: 0.7)
-                                                .delay(Double(index) * 0.01),
-                                            value: viewModel.audioLevel
-                                        )
-                                }
-                            }
-                            .frame(height: 25)
-                            
-                            Text("\(Int(viewModel.timeRemaining))s")
-                                .font(.system(size: 14))
-                                .foregroundColor(Color(.systemGray))
-                        }
-                        .padding(.bottom, 10)
-                    }
-                    
-                    // Transcribed text area
-                    if !viewModel.currentText.isEmpty {
-                        ScrollView {
-                            Text(viewModel.currentText)
-                                .foregroundColor(Color(.systemGray))
+                    if viewModel.transcriptionInProgress {
+                        VStack(spacing: 16) {
+                            ProgressView()
+                                .scaleEffect(1.2)
+                                .tint(AppColors.accent)
                                 .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Text("Saving minute...")
+                                .headerStyle()
                         }
-                        .frame(maxHeight: viewModel.isRecording ? 200 : .infinity)
-                    } else if !viewModel.isRecording {
-                        // Remove instruction text completely
-                        Spacer()
+                        .padding(.vertical, 40)
+                    } else if showSuccessAnimation {
+                        // Success animation
+                        VStack(spacing: 16) {
+                            ZStack {
+                                Circle()
+                                    .fill(AppColors.cardBackground)
+                                    .frame(width: 100, height: 100)
+                                
+                                Image(systemName: "checkmark.circle.fill")
+                                    .resizable()
+                                    .frame(width: 60, height: 60)
+                                    .foregroundColor(AppColors.accent)
+                            }
+                            
+                            Text("Minute saved!")
+                                .headerStyle()
+                        }
+                        .padding(.vertical, 40)
+                        .transition(.opacity)
+                        .onAppear {
+                            // Provide haptic feedback
+                            let generator = UINotificationFeedbackGenerator()
+                            generator.notificationOccurred(.success)
+                            
+                            // Auto-dismiss the success animation after a delay
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                withAnimation(.easeOut(duration: 0.3)) {
+                                    showSuccessAnimation = false
+                                }
+                            }
+                        }
+                    } else {
+                        VStack(spacing: 0) {
+                            // Main recording area with flexible space for animations
+                            Spacer()
+                                .frame(height: viewModel.isRecording ? 20 : 100)
+                                .animation(.easeInOut(duration: 0.5), value: viewModel.isRecording)
+                            
+                            // Record button - will float up when recording
+                            RecordButton(
+                                isRecording: viewModel.isRecording,
+                                progress: viewModel.isRecording ? viewModel.timeRemaining / 60.0 : 1.0
+                            ) {
+                                if viewModel.isRecording {
+                                    withAnimation(.easeInOut(duration: 0.5)) {
+                                        showWaveform = false
+                                        showTranscription = false
+                                    }
+                                    
+                                    // Small delay before stopping to let animations complete
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        viewModel.stopTranscription()
+                                    }
+                                } else {
+                                    viewModel.startTranscription(mode: .recording) { text in
+                                        // Show waveform with a slight delay when audio starts
+                                        if !showWaveform && viewModel.audioLevel > 0.1 {
+                                            withAnimation(.easeInOut(duration: 0.6)) {
+                                                showWaveform = true
+                                            }
+                                        }
+                                        
+                                        // Show transcription with a slight delay when text appears
+                                        if !showTranscription && !text.isEmpty {
+                                            withAnimation(.easeInOut(duration: 0.6)) {
+                                                showTranscription = true
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Reset states
+                                    showWaveform = false
+                                    showTranscription = false
+                                }
+                            }
+                            .padding(.bottom, viewModel.isRecording ? 10 : 40)
+                            .animation(.easeInOut(duration: 0.5), value: viewModel.isRecording)
+                            
+                            // Timer text and waveform
+                            if viewModel.isRecording && showWaveform {
+                                VStack(spacing: 12) {
+                                    AudioWaveform(level: viewModel.audioLevel)
+                                        .padding(.horizontal)
+                                    
+                                    TimerDisplay(seconds: Int(viewModel.timeRemaining))
+                                }
+                                .padding(.bottom, 20)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
+                            
+                            // Transcribed text area - no dark card, just clean text
+                            if viewModel.isRecording && showTranscription && !viewModel.currentText.isEmpty {
+                                ScrollView {
+                                    Text(viewModel.currentText)
+                                        .bodyStyle()
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 20)
+                                }
+                                .frame(maxHeight: 200)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                .animation(.easeInOut(duration: 0.7), value: viewModel.currentText)
+                            } else if !viewModel.isRecording && !viewModel.currentText.isEmpty {
+                                // Show full transcription when not recording
+                                ScrollView {
+                                    Text(viewModel.currentText)
+                                        .bodyStyle()
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 20)
+                                }
+                                .frame(maxHeight: .infinity)
+                                .transition(.opacity)
+                                .animation(.easeInOut(duration: 0.5), value: viewModel.isRecording)
+                            }
+                            
+                            Spacer(minLength: viewModel.isRecording ? 40 : 100)
+                                .animation(.easeInOut(duration: 0.5), value: viewModel.isRecording)
+                        }
+                        .animation(.easeInOut(duration: 0.5), value: viewModel.isRecording)
+                    }
+                    
+                    Spacer()
+                    
+                    // Bottom info in Eight Sleep style
+                    if !viewModel.isRecording && !viewModel.currentText.isEmpty {
+                        DarkCard {
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text("Off")
+                                        .headerStyle()
+                                    Text("Turns on when recording starts")
+                                        .captionStyle()
+                                }
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    // Toggle autopilot state (placeholder)
+                                }) {
+                                    Text("Autopilot is off")
+                                        .captionStyle()
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(AppColors.cardBackgroundSecondary)
+                                        .cornerRadius(20)
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.5), value: viewModel.isRecording)
                     }
                 }
-                
-                Spacer()
+                .navigationBarHidden(true)
             }
-            // Remove the title from the navigation bar since we have our own centered title
-            .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 viewModel.requestSpeechAuthorization()
             }
@@ -180,7 +204,16 @@ struct ContentView: View {
                     }
                 }
             }
+            .onChange(of: viewModel.isRecording) { isRecording in
+                // Reset UI state when recording stops
+                if !isRecording {
+                    withAnimation(.easeInOut(duration: 0.5)) {
+                        showWaveform = false
+                    }
+                }
+            }
         }
+        .preferredColorScheme(.dark) // Force dark mode
     }
 }
 

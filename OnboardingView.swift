@@ -42,70 +42,89 @@ struct OnboardingView: View {
     }
     
     var body: some View {
-        VStack(spacing: 24) {
-            Text("Setup Checklist")
-                .font(.title2)
-                .fontWeight(.semibold)
-                .padding(.top, 32)
+        ZStack {
+            // Background
+            AppColors.background
+                .ignoresSafeArea()
             
-            if isCheckingPermissions {
-                ProgressView()
-                    .scaleEffect(1.2)
-                    .padding()
-            } else {
-                Text("This will only take a few seconds and you'll be ready to get started.")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
+            VStack(spacing: 30) {
+                // Title area
+                Text("DailyMinute")
+                    .titleStyle()
+                    .padding(.top, 60)
                 
-                VStack(spacing: 16) {
-                    PermissionRow(
-                        title: "Microphone Access",
-                        subtitle: "Required to record your minutes",
-                        isAuthorized: $microphoneAuthorized,
-                        isLoading: $microphoneLoading,
-                        systemImage: "mic",
-                        action: requestMicrophoneAccess
-                    )
+                if isCheckingPermissions {
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(1.2)
+                        .tint(AppColors.accent)
+                        .padding()
+                    Spacer()
+                } else {
+                    Text("Setup Required")
+                        .headerStyle()
+                        .padding(.bottom, 10)
                     
-                    PermissionRow(
-                        title: "Speech Recognition",
-                        subtitle: "Required to transcribe your minutes",
-                        isAuthorized: $speechRecognitionAuthorized,
-                        isLoading: $speechRecognitionLoading,
-                        systemImage: "waveform",
-                        action: requestSpeechRecognitionAccess
-                    )
+                    Text("Please enable the following permissions to use voice recording features.")
+                        .captionStyle()
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                        .padding(.bottom, 20)
+                    
+                    // Permission cards in Eight Sleep style
+                    DarkCard {
+                        VStack(spacing: 20) {
+                            PermissionRowDark(
+                                title: "Microphone Access",
+                                subtitle: "Required to record your minutes",
+                                isAuthorized: $microphoneAuthorized,
+                                isLoading: $microphoneLoading,
+                                systemImage: "mic.fill",
+                                action: requestMicrophoneAccess
+                            )
+                            
+                            DarkDivider()
+                            
+                            PermissionRowDark(
+                                title: "Speech Recognition",
+                                subtitle: "Required to transcribe your minutes",
+                                isAuthorized: $speechRecognitionAuthorized,
+                                isLoading: $speechRecognitionLoading,
+                                systemImage: "waveform",
+                                action: requestSpeechRecognitionAccess
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    
+                    Spacer()
+                    
+                    // Continue button in Eight Sleep style
+                    Button(action: {
+                        if microphoneAuthorized && speechRecognitionAuthorized {
+                            hasCompletedOnboarding = true
+                        }
+                    }) {
+                        Text("Continue")
+                            .font(.system(size: 17, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(
+                                (microphoneAuthorized && speechRecognitionAuthorized) ?
+                                AppColors.accent : AppColors.textTertiary
+                            )
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
+                    .disabled(!(microphoneAuthorized && speechRecognitionAuthorized))
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 40)
                 }
-                .padding()
             }
-            
-            Spacer()
-            
-            Button(action: {
-                if microphoneAuthorized && speechRecognitionAuthorized {
-                    hasCompletedOnboarding = true
-                }
-            }) {
-                Text("Continue")
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(
-                        (microphoneAuthorized && speechRecognitionAuthorized) ?
-                        Color.black : Color.gray
-                    )
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
-            }
-            .disabled(!(microphoneAuthorized && speechRecognitionAuthorized))
-            .padding()
+            .navigationBarHidden(true)
         }
-        .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .padding()
         .onAppear(perform: checkExistingPermissions)
+        .preferredColorScheme(.dark)
     }
     
     private func requestMicrophoneAccess() {
@@ -139,7 +158,8 @@ struct OnboardingView: View {
     }
 }
 
-struct PermissionRow: View {
+// Dark themed permission row for Eight Sleep style
+struct PermissionRowDark: View {
     let title: String
     let subtitle: String
     @Binding var isAuthorized: Bool
@@ -149,26 +169,28 @@ struct PermissionRow: View {
     
     var body: some View {
         HStack(spacing: 16) {
+            // Icon
             Image(systemName: systemImage)
-                .font(.title2)
-                .foregroundColor(.black)
+                .font(.system(size: 22))
+                .foregroundColor(isAuthorized ? AppColors.accent : AppColors.textPrimary)
                 .frame(width: 32)
             
+            // Text
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+                    .headerStyle()
                 
                 Text(subtitle)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .captionStyle()
             }
             
             Spacer()
             
+            // Toggle or loading indicator
             if isLoading {
                 ProgressView()
                     .scaleEffect(0.8)
+                    .tint(AppColors.accent)
             } else {
                 Toggle("", isOn: Binding(
                     get: { isAuthorized },
@@ -178,13 +200,11 @@ struct PermissionRow: View {
                         }
                     }
                 ))
-                .toggleStyle(SwitchToggleStyle(tint: .black))
+                .toggleStyle(SwitchToggleStyle(tint: AppColors.accent))
                 .disabled(isAuthorized) // Only allow toggling on, not off
             }
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
+        .contentShape(Rectangle())
         .onTapGesture {
             if !isAuthorized && !isLoading {
                 action()

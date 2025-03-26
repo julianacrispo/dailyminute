@@ -3,7 +3,7 @@ import Speech
 import SwiftUI
 import Accelerate
 
-@Observable class JournalViewModel {
+@Observable class JournalViewModel: ObservableObject {
     var journalEntries: [JournalEntry] = []
     var currentText: String = ""
     var isRecording: Bool = false
