@@ -10,6 +10,7 @@ struct JournalEntryDetailView: View {
     @State private var showSaveConfirmation: Bool = false
     @FocusState private var isFocused: Bool
     @State private var isTranscribing: Bool = false
+    @State private var dragOffset: CGFloat = 0
     
     init(entry: JournalEntry, viewModel: JournalViewModel) {
         self.entry = entry
@@ -181,6 +182,36 @@ struct JournalEntryDetailView: View {
                 }
             }
         }
+        .offset(x: dragOffset)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    if value.translation.width > 0 && !isEditing {
+                        // Only allow drag to the right and when not editing
+                        dragOffset = min(value.translation.width, 200)
+                    }
+                }
+                .onEnded { value in
+                    if dragOffset > 100 {
+                        // If dragged far enough to the right, navigate back
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            dragOffset = UIScreen.main.bounds.width
+                        }
+                        // Provide haptic feedback
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        // Navigate back after animation completes
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            dismiss()
+                        }
+                    } else {
+                        // If not dragged far enough, snap back
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
         .navigationBarHidden(true)
         .overlay(
             Group {

@@ -21,6 +21,12 @@ struct JournalEntriesView: View {
     @Bindable var viewModel: JournalViewModel
     @State private var selectedDate: Date = Date()
     @State private var currentMonth: Date = Date()
+    @State private var calendarDragOffset: CGFloat = 0
+    @State private var draggingDirection: DraggingDirection = .none
+    
+    enum DraggingDirection {
+        case none, left, right
+    }
     
     var body: some View {
         ZStack {
@@ -63,62 +69,74 @@ struct JournalEntriesView: View {
                     }
                     .padding(.horizontal)
                     
-                    // Day of week headers
-                    HStack(spacing: 0) {
-                        ForEach(Calendar.current.shortWeekdaySymbols, id: \.self) { day in
-                            Text(day)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(AppColors.textSecondary)
-                                .frame(maxWidth: .infinity)
+                    // Calendar content with swipe gesture
+                    ZStack {
+                        // Left month (previous)
+                        if draggingDirection == .right {
+                            getCalendarForMonth(offsetMonth: -1)
+                                .offset(x: calendarDragOffset - UIScreen.main.bounds.width)
+                        }
+                        
+                        // Current month
+                        getCalendarForMonth(offsetMonth: 0)
+                            .offset(x: calendarDragOffset)
+                        
+                        // Right month (next)
+                        if draggingDirection == .left {
+                            getCalendarForMonth(offsetMonth: 1)
+                                .offset(x: calendarDragOffset + UIScreen.main.bounds.width)
                         }
                     }
-                    .padding(.horizontal)
-                    
-                    // Calendar grid
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 6) {
-                        ForEach(daysInMonth()) { dateItem in
-                            if let date = dateItem.date {
-                                Button {
-                                    selectedDate = date
-                                    
-                                    // Get entries for the selected date
-                                    let entriesForDay = entriesForDate(date)
-                                    let entriesCount = entriesForDay.count
-                                    
-                                    // Provide haptic feedback when a day is tapped
-                                    let generator = UIImpactFeedbackGenerator(style: .light)
-                                    generator.prepare()
-                                    generator.impactOccurred()
-                                    
-                                    // Navigate based on entries count
-                                    if entriesCount > 0 {
-                                        if entriesCount == 1 {
-                                            // If there's exactly one entry, go directly to detail view
-                                            viewModel.selectedEntry = entriesForDay[0]
-                                        } else {
-                                            // If there are multiple entries, go to day entries view
-                                            viewModel.selectedDay = date
-                                        }
-                                    }
-                                    // If no entries, just update the selected date (already done above)
-                                } label: {
-                                    CalendarDayButton(
-                                        date: date,
-                                        isSelected: isSameDay(date, selectedDate),
-                                        hasEntries: hasEntriesForDate(date),
-                                        isCurrentMonth: isSameMonth(date, currentMonth),
-                                        action: { }
-                                    )
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                // Determine direction
+                                if value.translation.width > 0 {
+                                    draggingDirection = .right
+                                } else if value.translation.width < 0 {
+                                    draggingDirection = .left
                                 }
-                                .buttonStyle(PlainButtonStyle())
-                            } else {
-                                // Empty space for days not in current month
-                                Color.clear
-                                    .frame(height: 44)
+                                
+                                // Update offset based on drag
+                                calendarDragOffset = value.translation.width
                             }
-                        }
-                    }
-                    .padding(.horizontal)
+                            .onEnded { value in
+                                // Threshold for month change
+                                let threshold: CGFloat = 100
+                                
+                                if value.translation.width > threshold {
+                                    // Swiped right - go to previous month
+                                    withAnimation(.easeOut(duration: 0.25)) {
+                                        calendarDragOffset = UIScreen.main.bounds.width
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                        previousMonth()
+                                        calendarDragOffset = 0
+                                        draggingDirection = .none
+                                    }
+                                }
+                                else if value.translation.width < -threshold {
+                                    // Swiped left - go to next month
+                                    withAnimation(.easeOut(duration: 0.25)) {
+                                        calendarDragOffset = -UIScreen.main.bounds.width
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                        nextMonth()
+                                        calendarDragOffset = 0
+                                        draggingDirection = .none
+                                    }
+                                }
+                                else {
+                                    // Not enough swipe - snap back
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        calendarDragOffset = 0
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        draggingDirection = .none
+                                    }
+                                }
+                            }
+                    )
                 }
                 .padding(.vertical, 12)
                 .background(AppColors.cardBackground)
@@ -164,6 +182,12 @@ struct JournalEntriesView: View {
                                 Button {
                                     // Navigate to entry detail
                                     viewModel.selectedEntry = entry
+                                    
+                                    // Provide haptic feedback when an entry is tapped
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.impactOccurred()
+                                    
+                                    print("DEBUG: Entry tapped - \(entry.id)")
                                 } label: {
                                     DarkCard {
                                         VStack(alignment: .leading, spacing: 12) {
@@ -208,8 +232,9 @@ struct JournalEntriesView: View {
                                         }
                                     }
                                     .padding(.horizontal)
+                                    .contentShape(Rectangle()) // Make the entire card tappable
                                 }
-                                .buttonStyle(PlainButtonStyle())
+                                .buttonStyle(EntryButtonStyle()) // Use custom button style for better feedback
                             }
                             .padding(.bottom, 16)
                         }
@@ -220,73 +245,134 @@ struct JournalEntriesView: View {
         }
     }
     
+    // Method to create the calendar content for a specific month
+    private func getCalendarForMonth(offsetMonth: Int) -> some View {
+        let targetMonth = Calendar.current.date(byAdding: .month, value: offsetMonth, to: currentMonth) ?? currentMonth
+        
+        return VStack(spacing: 12) {
+            // Day of week headers
+            HStack(spacing: 0) {
+                ForEach(Calendar.current.shortWeekdaySymbols, id: \.self) { day in
+                    Text(day)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppColors.textSecondary)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.horizontal)
+            
+            // Calendar grid
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 6) {
+                ForEach(daysInMonth(for: targetMonth)) { dateItem in
+                    if let date = dateItem.date {
+                        Button {
+                            selectedDate = date
+                            
+                            // Get entries for the selected date
+                            let entriesForDay = entriesForDate(date)
+                            let entriesCount = entriesForDay.count
+                            
+                            // Provide haptic feedback when a day is tapped
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            
+                            // Navigate based on entries count
+                            if entriesCount > 0 {
+                                if entriesCount == 1 {
+                                    // If there's exactly one entry, go directly to detail view
+                                    viewModel.selectedEntry = entriesForDay[0]
+                                } else {
+                                    // If there are multiple entries, go to day entries view
+                                    viewModel.selectedDay = date
+                                }
+                            }
+                            // If no entries, just update the selected date (already done above)
+                        } label: {
+                            CalendarDayButton(
+                                date: date,
+                                isSelected: isSameDay(date, selectedDate),
+                                hasEntries: hasEntriesForDate(date),
+                                isCurrentMonth: isSameMonth(date, targetMonth),
+                                action: { }
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    } else {
+                        // Empty space for days not in current month
+                        Color.clear
+                            .frame(height: 44)
+                    }
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+    
     // Calendar helper functions
-    private func daysInMonth() -> [DateIdentifiable] {
+    private func daysInMonth(for month: Date = Date()) -> [DateIdentifiable] {
         let calendar = Calendar.current
         
         // Get start of the month
-        let startDate = calendar.date(from: calendar.dateComponents([.year, .month], from: currentMonth))!
+        let startDate = calendar.date(from: calendar.dateComponents([.year, .month], from: month))!
         
         // Get the weekday of the first day (0 = Sunday, 1 = Monday, etc.)
         let firstWeekday = calendar.component(.weekday, from: startDate)
         
-        // Calculate offset to fill the grid from Sunday
-        let offset = firstWeekday - 1
-        
-        // Create array with offset placeholders and days of the month
-        var days: [DateIdentifiable] = []
-        
-        // Add empty placeholders for days before the first of the month
-        for position in 0..<offset {
-            days.append(DateIdentifiable(date: nil, gridPosition: position))
-        }
-        
-        // Get the range of days in month
+        // Calculate the number of days in the month
         let daysInMonth = calendar.range(of: .day, in: .month, for: startDate)!.count
         
-        // Add actual days of the month
-        for day in 1...daysInMonth {
-            if let date = calendar.date(byAdding: .day, value: day - 1, to: startDate) {
-                days.append(DateIdentifiable(date: date, gridPosition: offset + day - 1))
-            }
-        }
+        // Calculate the row count needed to display all days (including padding from previous/next months)
+        let rowsNeeded = Int(ceil(Double(daysInMonth + firstWeekday - 1) / 7.0))
+        let totalDays = rowsNeeded * 7
         
-        // Ensure we have complete weeks (multiples of 7) by adding placeholders at the end
-        let remainingDays = (7 - (days.count % 7)) % 7
-        for position in 0..<remainingDays {
-            days.append(DateIdentifiable(date: nil, gridPosition: offset + daysInMonth + position))
+        var days: [DateIdentifiable] = []
+        
+        // Generate dates for the grid
+        for position in 0..<totalDays {
+            if position < firstWeekday - 1 {
+                // Days from the previous month (empty)
+                days.append(DateIdentifiable(date: nil, gridPosition: position))
+            } else if position < daysInMonth + firstWeekday - 1 {
+                // Days in the current month
+                let dayOffset = position - (firstWeekday - 1)
+                if let date = calendar.date(byAdding: .day, value: dayOffset, to: startDate) {
+                    days.append(DateIdentifiable(date: date, gridPosition: position))
+                }
+            } else {
+                // Days from the next month (empty)
+                days.append(DateIdentifiable(date: nil, gridPosition: position))
+            }
         }
         
         return days
     }
     
     private func previousMonth() {
-        if let newDate = Calendar.current.date(byAdding: .month, value: -1, to: currentMonth) {
+        if let newMonth = Calendar.current.date(byAdding: .month, value: -1, to: currentMonth) {
             withAnimation {
-                currentMonth = newDate
+                currentMonth = newMonth
             }
+            // Haptic feedback when changing month
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
         }
     }
     
     private func nextMonth() {
-        if let newDate = Calendar.current.date(byAdding: .month, value: 1, to: currentMonth) {
+        if let newMonth = Calendar.current.date(byAdding: .month, value: 1, to: currentMonth) {
             withAnimation {
-                currentMonth = newDate
+                currentMonth = newMonth
             }
+            // Haptic feedback when changing month
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
         }
     }
     
     private func isSameDay(_ date1: Date, _ date2: Date) -> Bool {
         let calendar = Calendar.current
-        
-        // Extract just the year, month, and day components to ignore time
-        let components1 = calendar.dateComponents([.year, .month, .day], from: date1)
-        let components2 = calendar.dateComponents([.year, .month, .day], from: date2)
-        
-        // Compare only the date parts
-        return components1.year == components2.year && 
-               components1.month == components2.month && 
-               components1.day == components2.day
+        return calendar.isDate(date1, inSameDayAs: date2)
     }
     
     private func isSameMonth(_ date1: Date, _ date2: Date) -> Bool {
@@ -301,19 +387,15 @@ struct JournalEntriesView: View {
     }
     
     private func entriesForDate(_ date: Date) -> [JournalEntry] {
-        let calendar = Calendar.current
-        let dateComponents = calendar.dateComponents([.year, .month, .day], from: date)
-        
-        let entries = viewModel.journalEntries.filter { entry in
-            let result = isSameDay(entry.date, date)
-            return result
+        return viewModel.journalEntries.filter { entry in
+            isSameDay(entry.date, date)
         }
-        
-        return entries
     }
     
     private func entriesForSelectedDate() -> [JournalEntry] {
-        return entriesForDate(selectedDate)
+        return viewModel.journalEntries.filter { entry in
+            isSameDay(entry.date, selectedDate)
+        }
     }
     
     private func wordCount(_ text: String) -> Int {
@@ -431,107 +513,173 @@ struct CalendarDayButton: View {
 struct DayEntriesView: View {
     let date: Date
     @Bindable var viewModel: JournalViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var dragOffset: CGFloat = 0
     
     var body: some View {
-        ZStack {
-            // Background
-            AppColors.background
-                .ignoresSafeArea()
-            
-            VStack(alignment: .leading, spacing: 0) {
-                // Header without back button
-                Text(dayFormatter.string(from: date))
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(AppColors.textPrimary)
-                    .lineLimit(1)
-                    .padding(.horizontal)
-                    .padding(.top, 20)
-                    .padding(.bottom, 10)
+        GeometryReader { geometry in
+            ZStack {
+                // Background
+                AppColors.background
+                    .ignoresSafeArea()
                 
-                // Number of minutes
-                Text("\(entriesForDate().count) minutes")
-                    .captionStyle()
-                    .padding(.horizontal)
-                    .padding(.bottom, 20)
-                
-                if entriesForDate().isEmpty {
-                    Spacer()
-                    VStack(spacing: 20) {
-                        Image(systemName: "calendar.badge.clock")
-                            .font(.system(size: 60))
-                            .foregroundColor(AppColors.textSecondary)
+                VStack(alignment: .leading, spacing: 0) {
+                    // Header with back button
+                    HStack {
+                        Button(action: {
+                            // Clear selectedDay to help with navigation state
+                            viewModel.selectedDay = nil
+                            dismiss()
+                        }) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(AppColors.textPrimary)
+                                .padding(10)
+                        }
                         
-                        Text("No minutes recorded")
-                            .headerStyle()
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(dayFormatter.string(from: date))
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(AppColors.textPrimary)
+                                .lineLimit(1)
+                            
+                            Text("\(entriesForDate().count) minutes")
+                                .captionStyle()
+                        }
                         
-                        Text("Record minutes to see them appear here for this day")
-                            .captionStyle()
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 40)
+                        Spacer()
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 40)
-                    Spacer()
-                } else {
-                    ScrollView {
-                        VStack(spacing: 16) {
-                            ForEach(entriesForDate().sorted(by: { $0.date > $1.date })) { entry in
-                                Button {
-                                    // Navigate to entry detail
-                                    viewModel.selectedEntry = entry
-                                } label: {
-                                    DarkCard {
-                                        VStack(alignment: .leading, spacing: 12) {
-                                            // Time and indicators
-                                            HStack {
-                                                Image(systemName: "waveform")
-                                                    .foregroundColor(AppColors.textSecondary)
-                                                
-                                                Text(timeFormatter.string(from: entry.date))
-                                                    .captionStyle()
-                                                
-                                                Spacer()
-                                                
-                                                // Word count indicator
-                                                HStack(spacing: 4) {
-                                                    Text("\(wordCount(entry.text))")
+                    .padding(.horizontal, 10)
+                    .padding(.top, 10)
+                    
+                    if entriesForDate().isEmpty {
+                        Spacer()
+                        VStack(spacing: 20) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.system(size: 60))
+                                .foregroundColor(AppColors.textSecondary)
+                            
+                            Text("No minutes recorded")
+                                .headerStyle()
+                            
+                            Text("Record minutes to see them appear here for this day")
+                                .captionStyle()
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 40)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 40)
+                        Spacer()
+                    } else {
+                        // Make the ScrollView take up the remaining space
+                        ScrollView {
+                            VStack(spacing: 16) {
+                                ForEach(entriesForDate().sorted(by: { $0.date > $1.date })) { entry in
+                                    Button {
+                                        // Navigate to entry detail
+                                        viewModel.selectedEntry = entry
+                                        
+                                        // Provide haptic feedback when an entry is tapped
+                                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                                        generator.impactOccurred()
+                                        
+                                        print("DEBUG: Entry tapped - \(entry.id)")
+                                    } label: {
+                                        DarkCard {
+                                            VStack(alignment: .leading, spacing: 12) {
+                                                // Time and indicators
+                                                HStack {
+                                                    Image(systemName: "waveform")
+                                                        .foregroundColor(AppColors.textSecondary)
+                                                    
+                                                    Text(timeFormatter.string(from: entry.date))
                                                         .captionStyle()
                                                     
-                                                    Image(systemName: "text.word.count")
-                                                        .font(.system(size: 12))
+                                                    Spacer()
+                                                    
+                                                    // Word count indicator
+                                                    HStack(spacing: 4) {
+                                                        Text("\(wordCount(entry.text))")
+                                                            .captionStyle()
+                                                        
+                                                        Image(systemName: "text.word.count")
+                                                            .font(.system(size: 12))
+                                                            .foregroundColor(AppColors.textSecondary)
+                                                    }
+                                                }
+                                                
+                                                DarkDivider()
+                                                
+                                                // Text preview
+                                                Text(entry.text)
+                                                    .bodyStyle()
+                                                    .lineLimit(2)
+                                                    .multilineTextAlignment(.leading)
+                                                    .padding(.bottom, 4)
+                                                
+                                                // Bottom indicator
+                                                HStack {
+                                                    Spacer()
+                                                    
+                                                    Image(systemName: "chevron.right")
                                                         .foregroundColor(AppColors.textSecondary)
+                                                        .font(.system(size: 14, weight: .medium))
                                                 }
                                             }
-                                            
-                                            DarkDivider()
-                                            
-                                            // Text preview
-                                            Text(entry.text)
-                                                .bodyStyle()
-                                                .lineLimit(2)
-                                                .multilineTextAlignment(.leading)
-                                                .padding(.bottom, 4)
-                                            
-                                            // Bottom indicator
-                                            HStack {
-                                                Spacer()
-                                                
-                                                Image(systemName: "chevron.right")
-                                                    .foregroundColor(AppColors.textSecondary)
-                                                    .font(.system(size: 14, weight: .medium))
-                                            }
                                         }
+                                        .padding(.horizontal)
+                                        .contentShape(Rectangle()) // Make the entire card tappable
                                     }
-                                    .padding(.horizontal)
+                                    .buttonStyle(EntryButtonStyle()) // Use custom button style for better feedback
+                                    .zIndex(1) // Ensure buttons are above the swipe gesture layer
                                 }
-                                .buttonStyle(PlainButtonStyle())
+                                .padding(.bottom, 16)
                             }
-                            .padding(.bottom, 16)
                         }
+                        .padding(.top, 10)
                     }
                 }
+                // Apply the offset to the VStack
+                .offset(x: dragOffset)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .gesture(
+                    DragGesture(minimumDistance: 20)
+                        .onChanged { value in
+                            if value.translation.width > 0 {
+                                // Only allow drag to the right
+                                dragOffset = min(value.translation.width, 200)
+                                print("DEBUG: Drag detected - \(dragOffset)")
+                            }
+                        }
+                        .onEnded { value in
+                            if dragOffset > 100 {
+                                // If dragged far enough to the right, navigate back
+                                print("DEBUG: Drag threshold reached - navigating back")
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    dragOffset = geometry.size.width
+                                }
+                                // Provide haptic feedback
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.impactOccurred()
+                                // Navigate back after animation completes
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                    viewModel.selectedDay = nil
+                                    dismiss()
+                                }
+                            } else {
+                                // If not dragged far enough, snap back
+                                print("DEBUG: Drag threshold not reached - snapping back")
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    dragOffset = 0
+                                }
+                            }
+                        }
+                )
             }
-            .navigationBarHidden(true)
+            .navigationBarHidden(false)
+            .navigationTitle("Day Entries")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
         }
     }
     
@@ -600,4 +748,14 @@ struct DayEntriesView: View {
         }())
     }
     .preferredColorScheme(.dark)
+} 
+
+// Custom button style for entry cards that provides better visual feedback
+struct EntryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .opacity(configuration.isPressed ? 0.9 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
 } 

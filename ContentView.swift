@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var showSuccessAnimation = false
     @State private var showWaveform = false
     @State private var showTranscription = false
+    @Binding var selectedTab: Int  // Add binding to control the selected tab
     
     var body: some View {
         NavigationView {
@@ -63,13 +64,6 @@ struct ContentView: View {
                             // Provide haptic feedback
                             let generator = UINotificationFeedbackGenerator()
                             generator.notificationOccurred(.success)
-                            
-                            // Auto-dismiss the success animation after a delay
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                withAnimation(.easeOut(duration: 0.3)) {
-                                    showSuccessAnimation = false
-                                }
-                            }
                         }
                     } else {
                         VStack(spacing: 0) {
@@ -94,9 +88,13 @@ struct ContentView: View {
                                         viewModel.stopTranscription()
                                     }
                                 } else {
+                                    // Reset states BEFORE starting transcription
+                                    showWaveform = false
+                                    showTranscription = false
+                                    
                                     viewModel.startTranscription(mode: .recording) { text in
-                                        // Show waveform with a slight delay when audio starts
-                                        if !showWaveform && viewModel.audioLevel > 0.1 {
+                                        // Show waveform immediately when recording starts
+                                        if !showWaveform {
                                             withAnimation(.easeInOut(duration: 0.6)) {
                                                 showWaveform = true
                                             }
@@ -109,10 +107,6 @@ struct ContentView: View {
                                             }
                                         }
                                     }
-                                    
-                                    // Reset states
-                                    showWaveform = false
-                                    showTranscription = false
                                 }
                             }
                             .padding(.bottom, viewModel.isRecording ? 10 : 40)
@@ -204,6 +198,17 @@ struct ContentView: View {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                         showSuccessAnimation = true
                     }
+                    
+                    // Switch to the Minutes tab immediately after showing success
+                    // but before the success animation completes
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        selectedTab = 1  // Switch to Minutes tab before success animation completes
+                        
+                        // Reset success animation state after tab switch
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showSuccessAnimation = false
+                        }
+                    }
                 }
             }
             .onChange(of: viewModel.isRecording) { isRecording in
@@ -220,5 +225,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView(viewModel: JournalViewModel())
+    ContentView(viewModel: JournalViewModel(), selectedTab: .constant(0))
 }
