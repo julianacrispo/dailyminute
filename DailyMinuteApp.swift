@@ -53,9 +53,9 @@ struct MainTabView: View {
                 Label("Minutes", systemImage: "calendar")
             }
             .tag(1)
-            .onChange(of: selectedTab) { newValue in
-                // If we're switching to the Minutes tab and we're not at the root
-                if newValue == 1 && !journalNavigationPath.isEmpty {
+            .onChange(of: selectedTab) { oldValue, newValue in
+                // If we're switching to the Minutes tab
+                if newValue == 1 {
                     // Clear the navigation path to return to the root
                     journalNavigationPath = NavigationPath()
                     viewModel.selectedDay = nil
@@ -63,14 +63,22 @@ struct MainTabView: View {
                 }
             }
             // Observe selectedEntry changes to update navigation
-            .onChange(of: viewModel.selectedEntry) { entry in
-                if let entry = entry {
+            .onChange(of: viewModel.selectedEntry) { oldValue, newValue in
+                print("DEBUG: MainTabView onChange detected for selectedEntry")
+                print("DEBUG: Old value: \(String(describing: oldValue?.id))")
+                print("DEBUG: New value: \(String(describing: newValue?.id))")
+                if let entry = newValue {
+                    print("DEBUG: Appending entry to navigation path: \(entry.id)")
                     journalNavigationPath.append(entry)
                 }
             }
             // Observe selectedDay changes to update navigation
-            .onChange(of: viewModel.selectedDay) { day in
-                if let day = day {
+            .onChange(of: viewModel.selectedDay) { oldValue, newValue in
+                print("DEBUG: MainTabView onChange detected for selectedDay")
+                print("DEBUG: Old value: \(String(describing: oldValue))")
+                print("DEBUG: New value: \(String(describing: newValue))")
+                if let day = newValue {
+                    print("DEBUG: Appending day to navigation path: \(day)")
                     journalNavigationPath.append(day)
                 }
             }

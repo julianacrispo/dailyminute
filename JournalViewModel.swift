@@ -13,9 +13,18 @@ import Accelerate
     var audioLevel: Double = 0.0
     var activeTranscriptionMode: TranscriptionMode?
     
-    // Navigation state properties
-    var selectedEntry: JournalEntry? = nil
-    var selectedDay: Date? = nil
+    // Navigation state properties with debug prints
+    var selectedEntry: JournalEntry? = nil {
+        didSet {
+            print("DEBUG: JournalViewModel.selectedEntry changed to: \(String(describing: selectedEntry?.id))")
+        }
+    }
+    
+    var selectedDay: Date? = nil {
+        didSet {
+            print("DEBUG: JournalViewModel.selectedDay changed to: \(String(describing: selectedDay))")
+        }
+    }
     
     enum TranscriptionMode {
         case recording    // For new recordings
@@ -32,6 +41,7 @@ import Accelerate
     
     init() {
         setupSpeechRecognition()
+        debugPrintAllEntries()
     }
     
     private func setupSpeechRecognition() {
@@ -228,5 +238,37 @@ import Accelerate
             // Replace the old entry with the updated one
             journalEntries[index] = updatedEntry
         }
+    }
+    
+    func debugPrintAllEntries() {
+        print("DEBUG: ===== All Journal Entries =====")
+        if journalEntries.isEmpty {
+            print("DEBUG: No journal entries found")
+            createTestEntries() // Add test entries if none exist
+        } else {
+            for (index, entry) in journalEntries.enumerated() {
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateStyle = .medium
+                dateFormatter.timeStyle = .medium
+                print("DEBUG: Entry \(index + 1): ID=\(entry.id), Date=\(dateFormatter.string(from: entry.date)), TextLength=\(entry.text.count)")
+            }
+        }
+        print("DEBUG: ===============================")
+    }
+    
+    // Temporary function to create test entries
+    private func createTestEntries() {
+        print("DEBUG: Creating test entries for today")
+        
+        // Create entries for today
+        let now = Date()
+        journalEntries.append(JournalEntry(text: "Test entry 1 for today", date: now))
+        
+        // Create a second entry for today a few hours earlier
+        if let earlierToday = Calendar.current.date(byAdding: .hour, value: -3, to: now) {
+            journalEntries.append(JournalEntry(text: "Test entry 2 for today (earlier)", date: earlierToday))
+        }
+        
+        print("DEBUG: Created \(journalEntries.count) test entries")
     }
 } 

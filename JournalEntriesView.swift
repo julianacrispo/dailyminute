@@ -1,4 +1,21 @@
 import SwiftUI
+import UIKit
+
+// Define a struct to make each calendar day uniquely identifiable
+struct DateIdentifiable: Identifiable, Hashable {
+    let id = UUID()
+    let date: Date?
+    let gridPosition: Int  // Add grid position for extra uniqueness
+    
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(gridPosition)
+    }
+    
+    static func == (lhs: DateIdentifiable, rhs: DateIdentifiable) -> Bool {
+        return lhs.id == rhs.id
+    }
+}
 
 struct JournalEntriesView: View {
     @Bindable var viewModel: JournalViewModel
@@ -59,60 +76,41 @@ struct JournalEntriesView: View {
                     
                     // Calendar grid
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 6) {
-                        ForEach(daysInMonth(), id: \.self) { date in
-                            if let date = date {
-                                if hasEntriesForDate(date) {
-                                    // Days with entries - use navigation based on entry count
-                                    let entriesForDay = entriesForDate(date).sorted(by: { $0.date > $1.date })
-                                    if entriesForDay.count == 1 {
-                                        // Only one entry - navigate directly to it
-                                        Button {
-                                            selectedDate = date
-                                            // Directly navigate to the entry
-                                            if let firstEntry = entriesForDay.first {
-                                                let _ = withAnimation {
-                                                    // This causes navigation to the entry detail
-                                                    viewModel.selectedEntry = firstEntry
-                                                }
-                                            }
-                                        } label: {
-                                            CalendarDayButton(
-                                                date: date,
-                                                isSelected: isSameDay(date, selectedDate),
-                                                hasEntries: true,
-                                                isCurrentMonth: isSameMonth(date, currentMonth),
-                                                action: { }
-                                            )
-                                        }
-                                    } else {
-                                        // Multiple entries - navigate to day view
-                                        Button {
-                                            selectedDate = date
-                                            // Directly navigate to the day view
-                                            let _ = withAnimation {
-                                                // This causes navigation to the day view
-                                                viewModel.selectedDay = date
-                                            }
-                                        } label: {
-                                            CalendarDayButton(
-                                                date: date,
-                                                isSelected: isSameDay(date, selectedDate),
-                                                hasEntries: true,
-                                                isCurrentMonth: isSameMonth(date, currentMonth),
-                                                action: { }
-                                            )
+                        ForEach(daysInMonth()) { dateItem in
+                            if let date = dateItem.date {
+                                Button {
+                                    selectedDate = date
+                                    
+                                    // Get entries for the selected date
+                                    let entriesForDay = entriesForDate(date)
+                                    let entriesCount = entriesForDay.count
+                                    
+                                    // Provide haptic feedback when a day is tapped
+                                    let generator = UIImpactFeedbackGenerator(style: .light)
+                                    generator.prepare()
+                                    generator.impactOccurred()
+                                    
+                                    // Navigate based on entries count
+                                    if entriesCount > 0 {
+                                        if entriesCount == 1 {
+                                            // If there's exactly one entry, go directly to detail view
+                                            viewModel.selectedEntry = entriesForDay[0]
+                                        } else {
+                                            // If there are multiple entries, go to day entries view
+                                            viewModel.selectedDay = date
                                         }
                                     }
-                                } else {
-                                    // Days without entries - just selection
+                                    // If no entries, just update the selected date (already done above)
+                                } label: {
                                     CalendarDayButton(
                                         date: date,
                                         isSelected: isSameDay(date, selectedDate),
-                                        hasEntries: false,
+                                        hasEntries: hasEntriesForDate(date),
                                         isCurrentMonth: isSameMonth(date, currentMonth),
-                                        action: { selectedDate = date }
+                                        action: { }
                                     )
                                 }
+                                .buttonStyle(PlainButtonStyle())
                             } else {
                                 // Empty space for days not in current month
                                 Color.clear
@@ -223,7 +221,7 @@ struct JournalEntriesView: View {
     }
     
     // Calendar helper functions
-    private func daysInMonth() -> [Date?] {
+    private func daysInMonth() -> [DateIdentifiable] {
         let calendar = Calendar.current
         
         // Get start of the month
@@ -235,21 +233,28 @@ struct JournalEntriesView: View {
         // Calculate offset to fill the grid from Sunday
         let offset = firstWeekday - 1
         
+        // Create array with offset placeholders and days of the month
+        var days: [DateIdentifiable] = []
+        
+        // Add empty placeholders for days before the first of the month
+        for position in 0..<offset {
+            days.append(DateIdentifiable(date: nil, gridPosition: position))
+        }
+        
         // Get the range of days in month
         let daysInMonth = calendar.range(of: .day, in: .month, for: startDate)!.count
         
-        // Create array with offset placeholders and days of the month
-        var days = Array(repeating: nil as Date?, count: offset)
-        
+        // Add actual days of the month
         for day in 1...daysInMonth {
             if let date = calendar.date(byAdding: .day, value: day - 1, to: startDate) {
-                days.append(date)
+                days.append(DateIdentifiable(date: date, gridPosition: offset + day - 1))
             }
         }
         
-        // Ensure we have complete weeks (multiples of 7)
-        while days.count % 7 != 0 {
-            days.append(nil)
+        // Ensure we have complete weeks (multiples of 7) by adding placeholders at the end
+        let remainingDays = (7 - (days.count % 7)) % 7
+        for position in 0..<remainingDays {
+            days.append(DateIdentifiable(date: nil, gridPosition: offset + daysInMonth + position))
         }
         
         return days
@@ -273,7 +278,15 @@ struct JournalEntriesView: View {
     
     private func isSameDay(_ date1: Date, _ date2: Date) -> Bool {
         let calendar = Calendar.current
-        return calendar.isDate(date1, inSameDayAs: date2)
+        
+        // Extract just the year, month, and day components to ignore time
+        let components1 = calendar.dateComponents([.year, .month, .day], from: date1)
+        let components2 = calendar.dateComponents([.year, .month, .day], from: date2)
+        
+        // Compare only the date parts
+        return components1.year == components2.year && 
+               components1.month == components2.month && 
+               components1.day == components2.day
     }
     
     private func isSameMonth(_ date1: Date, _ date2: Date) -> Bool {
@@ -288,9 +301,15 @@ struct JournalEntriesView: View {
     }
     
     private func entriesForDate(_ date: Date) -> [JournalEntry] {
-        return viewModel.journalEntries.filter { entry in
-            isSameDay(entry.date, date)
+        let calendar = Calendar.current
+        let dateComponents = calendar.dateComponents([.year, .month, .day], from: date)
+        
+        let entries = viewModel.journalEntries.filter { entry in
+            let result = isSameDay(entry.date, date)
+            return result
         }
+        
+        return entries
     }
     
     private func entriesForSelectedDate() -> [JournalEntry] {
@@ -330,10 +349,12 @@ struct CalendarDayButton: View {
     let action: () -> Void
     
     var body: some View {
-        Button(action: action) {
+        ZStack {
             dayContent
         }
-        .buttonStyle(PlainButtonStyle())
+        .contentShape(Rectangle()) // Ensure the entire area is tappable
+        .accessibilityLabel("\(Calendar.current.component(.day, from: date))")
+        .accessibilityHint(hasEntries ? "Has entries" : "No entries")
     }
     
     private var dayContent: some View {
@@ -385,6 +406,8 @@ struct CalendarDayButton: View {
     private var textColor: Color {
         if !isCurrentMonth {
             return AppColors.textTertiary
+        } else if isSelected {
+            return Color.white
         } else {
             return AppColors.textSecondary
         }
@@ -392,7 +415,15 @@ struct CalendarDayButton: View {
     
     private func isSameDay(_ date1: Date, _ date2: Date) -> Bool {
         let calendar = Calendar.current
-        return calendar.isDate(date1, inSameDayAs: date2)
+        
+        // Extract just the year, month, and day components to ignore time
+        let components1 = calendar.dateComponents([.year, .month, .day], from: date1)
+        let components2 = calendar.dateComponents([.year, .month, .day], from: date2)
+        
+        // Compare only the date parts
+        return components1.year == components2.year && 
+               components1.month == components2.month && 
+               components1.day == components2.day
     }
 }
 
@@ -408,7 +439,7 @@ struct DayEntriesView: View {
                 .ignoresSafeArea()
             
             VStack(alignment: .leading, spacing: 0) {
-                // Simplified header without back button
+                // Header without back button
                 Text(dayFormatter.string(from: date))
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(AppColors.textPrimary)
@@ -517,7 +548,15 @@ struct DayEntriesView: View {
     
     private func isSameDay(_ date1: Date, _ date2: Date) -> Bool {
         let calendar = Calendar.current
-        return calendar.isDate(date1, inSameDayAs: date2)
+        
+        // Extract just the year, month, and day components to ignore time
+        let components1 = calendar.dateComponents([.year, .month, .day], from: date1)
+        let components2 = calendar.dateComponents([.year, .month, .day], from: date2)
+        
+        // Compare only the date parts
+        return components1.year == components2.year && 
+               components1.month == components2.month && 
+               components1.day == components2.day
     }
     
     // Formatters
