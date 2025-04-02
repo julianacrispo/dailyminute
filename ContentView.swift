@@ -117,6 +117,7 @@ struct ContentView: View {
                                 VStack(spacing: 12) {
                                     AudioWaveform(level: viewModel.audioLevel)
                                         .padding(.horizontal)
+                                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.audioLevel)
                                     
                                     TimerDisplay(seconds: Int(viewModel.timeRemaining))
                                 }

@@ -186,7 +186,6 @@ struct DarkCard<Content: View>: View {
 // Audio waveform visualization similar to Eight Sleep's minimal UI
 struct AudioWaveform: View {
     var level: Double
-    @State private var animationPhase: Double = 0
     private let maxBarHeight: CGFloat = 50  // Maximum height constraint for bars
     private let containerHeight: CGFloat = 60  // Fixed container height
     
@@ -214,55 +213,45 @@ struct AudioWaveform: View {
         }
         .frame(height: containerHeight)  // Fixed container height
         .clipShape(Rectangle())  // Ensure visualization stays within this container
-        .onAppear {
-            // Start continuous animation with faster cycle
-            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                animationPhase = 1.0
-            }
-        }
     }
     
-    // Calculate dynamic bar height based on index and animation
+    // Calculate dynamic bar height based on index and audio level
     private func getBarHeight(for index: Int) -> CGFloat {
-        let baseHeight: CGFloat = 2  // Lower minimum height to create more contrast
+        let baseHeight: CGFloat = 2  // Minimum height when silent
         
-        // Only apply significant height if there's audio level
-        if level < 0.05 {
-            return baseHeight + CGFloat.random(in: 0...2)  // Tiny movement when silent
+        // When silent or very low audio, just show flat line with minimal height
+        if level < 0.03 {
+            return baseHeight
         }
         
-        // Create a natural waveform pattern with multiple sine waves of different frequencies
-        let position = Double(index) / 20.0
+        // Create a natural distribution pattern for the bars
+        // Center bars are taller, edges are shorter
+        let position = Double(index) / 19.0  // Normalize position (0 to 1)
+        let positionFactor = 1.0 - abs((position * 2.0) - 1.0)  // Highest in middle (0->1->0)
         
-        // More extreme wave function for greater peaks
-        let wave1 = sin(position * 10 + animationPhase * 2.5 * .pi + Double(index) * 0.3)
-        let wave2 = sin(position * 18 + animationPhase * 4.0 * .pi) * 0.7
-        let wave3 = sin(position * 5 + animationPhase * 1.5 * .pi) * 0.5
-        
-        // Apply more extreme random variation to certain bars
-        let randomAmplifier = index % 4 == 0 ? CGFloat.random(in: 1.1...1.8) : 1.0
-        
-        // Combine waves with higher multiplier
-        let combinedWave = (wave1 + wave2 + wave3) / 1.8 // Lower divisor for more extreme values
-        let heightMultiplier = baseHeight + (level * 80.0)  // Much more dramatic height difference
-        
-        // Create more dramatic peaks - now some bars can be almost 2x as tall
-        let peakMultiplier: CGFloat
-        if Int(position * 20) % 5 == 0 {
-            peakMultiplier = 1.8 // Super high peaks
-        } else if Int(position * 20) % 3 == 0 {
-            peakMultiplier = 1.5 // High peaks
-        } else if Int(position * 20) % 2 == 0 {
-            peakMultiplier = 0.4 // Very short bars
+        // Calculate frequency-like distribution - we simulate different frequencies
+        // by using the bar index to determine its behavior
+        let frequencyFactor: Double
+        if index % 4 == 0 {
+            // Low frequency bars - slower but can be taller
+            frequencyFactor = 1.2
+        } else if index % 2 == 0 {
+            // Mid frequency bars
+            frequencyFactor = 1.0
         } else {
-            peakMultiplier = 1.0 // Normal bars
+            // High frequency bars - shorter
+            frequencyFactor = 0.7
         }
         
-        // Apply random variation to height
-        let rawHeight = max(baseHeight, abs(CGFloat(combinedWave) * heightMultiplier * peakMultiplier * randomAmplifier))
+        // Calculate the height based on audio level and position
+        let heightMultiplier = baseHeight + (level * 90.0 * positionFactor * frequencyFactor)
         
-        // Apply subtle random variation and enforce maximum height
-        return min(rawHeight * CGFloat.random(in: 0.9...1.1), maxBarHeight)
+        // Add a very small amount of randomness to make it feel organic
+        // but not so much that it looks jittery
+        let organicFactor = CGFloat.random(in: 0.96...1.04)
+        
+        // Apply maximum height constraint
+        return min(heightMultiplier * organicFactor, maxBarHeight)
     }
 }
 

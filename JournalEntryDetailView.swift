@@ -137,6 +137,7 @@ struct JournalEntryDetailView: View {
                                     HStack {
                                         AudioWaveform(level: viewModel.audioLevel)
                                             .frame(width: 120, height: 24)
+                                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.audioLevel)
                                         
                                         Text("Listening...")
                                             .captionStyle()

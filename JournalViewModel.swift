@@ -167,13 +167,23 @@ import NaturalLanguage
         
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            let threshold: Float = 0.01
-            let normalizedLevel = rms * 15
+            
+            // More sensitive threshold for voice detection
+            let threshold: Float = 0.008
+            
+            // Normalize audio level with better scaling for speech
+            let normalizedLevel = rms * 20
             
             if normalizedLevel < threshold {
-                self.audioLevel = max(0, self.audioLevel - 0.3)
+                // Decay quickly to zero when silent
+                self.audioLevel = max(0, self.audioLevel - 0.15)
             } else {
-                self.audioLevel = Double(min(max(normalizedLevel, 0), 1))
+                // More responsive rise with smoothing - multiply by a factor to make
+                // speech more visually obvious in the waveform
+                let targetLevel = Double(min(normalizedLevel, 1.0))
+                
+                // Smooth the transition to avoid jitter but still be responsive
+                self.audioLevel = min(1.0, self.audioLevel * 0.7 + targetLevel * 0.3)
             }
         }
     }
