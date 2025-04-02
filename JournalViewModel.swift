@@ -2,6 +2,7 @@ import Foundation
 import Speech
 import SwiftUI
 import Accelerate
+import NaturalLanguage
 
 @Observable class JournalViewModel: ObservableObject {
     var journalEntries: [JournalEntry] = []
@@ -12,6 +13,18 @@ import Accelerate
     var entrySaved: Bool = false
     var audioLevel: Double = 0.0
     var activeTranscriptionMode: TranscriptionMode?
+    
+    // Function to detect sentence boundaries
+    private func detectSentenceBoundaries(in text: String) {
+        let tagger = NLTagger(tagSchemes: [.tokenType])
+        tagger.string = text
+        
+        tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .sentence, scheme: .tokenType, options: []) { tag, tokenRange in
+            let sentence = text[tokenRange]
+            print("Detected sentence: \(sentence)")
+            return true
+        }
+    }
     
     // Navigation state properties with debug prints
     var selectedEntry: JournalEntry? = nil {
@@ -52,7 +65,7 @@ import Accelerate
         // Pre-warm audio engine
         audioEngine = AVAudioEngine()
         do {
-            try AVAudioSession.sharedInstance().setCategory(.record, mode: .measurement, options: .duckOthers)
+            try AVAudioSession.sharedInstance().setCategory(.record, mode: .spokenAudio, options: .duckOthers)
             try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             print("Failed to setup audio session: \(error)")
@@ -102,6 +115,7 @@ import Accelerate
         recognitionRequest.shouldReportPartialResults = true
         recognitionRequest.taskHint = .dictation
         recognitionRequest.contextualStrings = ["minute", "record", "today", "think"]
+        recognitionRequest.addsPunctuation = true
         
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
@@ -119,6 +133,11 @@ import Accelerate
                 DispatchQueue.main.async {
                     self.currentText = transcription
                     self.textUpdateHandler?(transcription)
+                    
+                    // Log sentence boundaries for debugging
+                    if transcription.count > 10 { // Only analyze if there's enough text
+                        self.detectSentenceBoundaries(in: transcription)
+                    }
                 }
             }
             
