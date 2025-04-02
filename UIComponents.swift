@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 // Animated water-like gradient effect
 struct WaterGradientView: View {
@@ -243,8 +244,13 @@ struct AudioWaveform: View {
             frequencyFactor = 0.7
         }
         
-        // Calculate the height based on audio level and position
-        let heightMultiplier = baseHeight + (level * 90.0 * positionFactor * frequencyFactor)
+        // Apply a non-linear scale to make the waveform more sensitive to volume changes
+        // This will create more distinction between soft, medium, and loud speech
+        let volumeScale = pow(level, 1.5) // Apply exponential scaling to accentuate differences
+        
+        // Calculate the height based on audio level and position with improved scaling
+        // Reduced the multiplier to prevent bars from hitting max height too easily
+        let heightMultiplier = baseHeight + (volumeScale * 70.0 * positionFactor * frequencyFactor)
         
         // Add a very small amount of randomness to make it feel organic
         // but not so much that it looks jittery
@@ -310,5 +316,173 @@ struct DarkDivider: View {
             .fill(AppColors.textTertiary.opacity(0.3))
             .frame(height: 0.5)
             .padding(.vertical, 4)
+    }
+}
+
+// Audio Player View for playback of recorded minutes
+struct AudioPlayerView: View {
+    var audioURL: URL
+    @State private var isPlaying: Bool = false
+    @State private var progress: Double = 0.0
+    @State private var currentTime: TimeInterval = 0
+    @State private var duration: TimeInterval = 0
+    @State private var playbackRate: Float = 1.0
+    
+    // We'll use this to track the audio player
+    @State private var audioPlayer: AVAudioPlayer?
+    
+    // Timer to update progress during playback
+    @State private var progressTimer: Timer?
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            // Progress bar
+            HStack(spacing: 8) {
+                Text(formatTime(currentTime))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundColor(AppColors.textSecondary)
+                
+                Slider(value: $progress, in: 0...1)
+                    .accentColor(AppColors.accent)
+                    .onChange(of: progress) { newValue in
+                        // Only seek when user is dragging, not during normal playback
+                        if !isPlaying || (audioPlayer?.isPlaying == false) {
+                            seekTo(percentage: newValue)
+                        }
+                    }
+                
+                Text(formatTime(duration))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundColor(AppColors.textSecondary)
+            }
+            
+            // Playback controls
+            HStack(spacing: 20) {
+                // Play/Pause button
+                Button(action: {
+                    togglePlayback()
+                }) {
+                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 36))
+                        .foregroundColor(AppColors.accent)
+                }
+                
+                // Playback speed options
+                HStack(spacing: 8) {
+                    Text("Speed:")
+                        .captionStyle()
+                    
+                    ForEach([0.5, 1.0, 1.5, 2.0], id: \.self) { rate in
+                        Button(action: {
+                            setPlaybackRate(rate: Float(rate))
+                        }) {
+                            Text("\(rate, specifier: "%.1f")x")
+                                .font(.system(size: 12, weight: playbackRate == Float(rate) ? .bold : .regular))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    playbackRate == Float(rate) ?
+                                    AppColors.accent.opacity(0.3) :
+                                    AppColors.cardBackground.opacity(0.5)
+                                )
+                                .cornerRadius(12)
+                                .foregroundColor(
+                                    playbackRate == Float(rate) ?
+                                    AppColors.accent :
+                                    AppColors.textSecondary
+                                )
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .onAppear {
+            setupAudioPlayer()
+        }
+        .onDisappear {
+            stopPlayback()
+        }
+    }
+    
+    // Format time for display
+    private func formatTime(_ timeInterval: TimeInterval) -> String {
+        let minutes = Int(timeInterval / 60)
+        let seconds = Int(timeInterval.truncatingRemainder(dividingBy: 60))
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+    
+    // Initialize the audio player
+    private func setupAudioPlayer() {
+        do {
+            audioPlayer = try AVAudioPlayer(contentsOf: audioURL)
+            audioPlayer?.prepareToPlay()
+            duration = audioPlayer?.duration ?? 0
+            
+            // Setup audio session for playback
+            try AVAudioSession.sharedInstance().setCategory(.playback)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("Error setting up audio player: \(error.localizedDescription)")
+        }
+    }
+    
+    // Toggle between play and pause
+    private func togglePlayback() {
+        if isPlaying {
+            pausePlayback()
+        } else {
+            startPlayback()
+        }
+    }
+    
+    // Start playing the audio
+    private func startPlayback() {
+        audioPlayer?.play()
+        isPlaying = true
+        
+        // Start a timer to update progress
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            if let player = audioPlayer, player.isPlaying {
+                currentTime = player.currentTime
+                progress = currentTime / duration
+                
+                // If playback reaches the end, reset
+                if currentTime >= duration {
+                    isPlaying = false
+                    progress = 0
+                    currentTime = 0
+                    progressTimer?.invalidate()
+                }
+            }
+        }
+    }
+    
+    // Pause the audio
+    private func pausePlayback() {
+        audioPlayer?.pause()
+        isPlaying = false
+        progressTimer?.invalidate()
+    }
+    
+    // Stop playback completely
+    private func stopPlayback() {
+        audioPlayer?.stop()
+        isPlaying = false
+        progressTimer?.invalidate()
+        audioPlayer = nil
+    }
+    
+    // Seek to a specific position
+    private func seekTo(percentage: Double) {
+        let targetTime = duration * percentage
+        audioPlayer?.currentTime = targetTime
+        currentTime = targetTime
+    }
+    
+    // Change playback speed
+    private func setPlaybackRate(rate: Float) {
+        playbackRate = rate
+        audioPlayer?.rate = rate
     }
 } 

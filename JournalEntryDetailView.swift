@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct JournalEntryDetailView: View {
     let entry: JournalEntry
@@ -73,8 +74,8 @@ struct JournalEntryDetailView: View {
                                 
                                 Spacer()
                                 
-                                // Day/night indicator (placeholder)
-                                Image(systemName: "moon.stars.fill")
+                                // Use a waveform icon instead of the AudioWaveform component
+                                Image(systemName: "waveform")
                                     .font(.system(size: 24))
                                     .foregroundColor(AppColors.textSecondary)
                             }
@@ -86,7 +87,7 @@ struct JournalEntryDetailView: View {
                         DarkCard {
                             VStack(alignment: .leading, spacing: 16) {
                                 HStack {
-                                    Text("Entry")
+                                    Text("Minute")
                                         .headerStyle()
                                     
                                     if !isEditing {
@@ -146,34 +147,27 @@ struct JournalEntryDetailView: View {
                                     }
                                     .padding(.top, 8)
                                 }
-                            }
-                        }
-                        .padding(.horizontal)
-                        
-                        // Additional metrics in Eight Sleep style
-                        DarkCard {
-                            VStack(alignment: .leading, spacing: 16) {
-                                Text("Metrics")
-                                    .headerStyle()
                                 
-                                DarkDivider()
-                                
-                                HStack(spacing: 30) {
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        Text("Word count")
-                                            .captionStyle()
-                                        Text("\(wordCount)")
-                                            .headerStyle()
-                                    }
+                                // Audio player for recorded minutes
+                                if !isEditing, let audioURL = entry.audioURL {
+                                    DarkDivider()
                                     
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        Text("Duration")
-                                            .captionStyle()
-                                        Text("1 min")
-                                            .headerStyle()
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack {
+                                            Image(systemName: "headphones")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(AppColors.textSecondary)
+                                            
+                                            Text("Recording")
+                                                .captionStyle()
+                                                .foregroundColor(AppColors.textSecondary)
+                                            
+                                            Spacer()
+                                        }
+                                        
+                                        AudioPlayerView(audioURL: audioURL)
                                     }
-                                    
-                                    Spacer()
+                                    .padding(.top, 8)
                                 }
                             }
                         }
@@ -224,7 +218,7 @@ struct JournalEntryDetailView: View {
                         HStack {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundColor(AppColors.accent)
-                            Text("Changes saved")
+                            Text("Saved!")
                                 .foregroundColor(AppColors.textPrimary)
                                 .font(.headline)
                         }

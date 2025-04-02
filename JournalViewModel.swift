@@ -3,6 +3,7 @@ import Speech
 import SwiftUI
 import Accelerate
 import NaturalLanguage
+import AVFoundation
 
 @Observable class JournalViewModel: ObservableObject {
     var journalEntries: [JournalEntry] = []
@@ -13,6 +14,10 @@ import NaturalLanguage
     var entrySaved: Bool = false
     var audioLevel: Double = 0.0
     var activeTranscriptionMode: TranscriptionMode?
+    
+    // Audio recording properties
+    private var audioRecorder: AVAudioRecorder?
+    private var currentRecordingURL: URL?
     
     // Function to detect sentence boundaries
     private func detectSentenceBoundaries(in text: String) {
@@ -87,6 +92,34 @@ import NaturalLanguage
         }
     }
     
+    // Set up an audio recorder
+    private func setupAudioRecorder() -> Bool {
+        let audioFilename = getDocumentsDirectory().appendingPathComponent("\(UUID().uuidString).m4a")
+        currentRecordingURL = audioFilename
+        
+        let settings = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: 44100,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+        
+        do {
+            audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
+            audioRecorder?.prepareToRecord()
+            return true
+        } catch {
+            print("Could not set up audio recorder: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    // Get the documents directory
+    private func getDocumentsDirectory() -> URL {
+        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        return paths[0]
+    }
+    
     func startTranscription(mode: TranscriptionMode, updateText: @escaping (String) -> Void) {
         guard !isRecording,
               let audioEngine = audioEngine,
@@ -101,9 +134,18 @@ import NaturalLanguage
         case .recording:
             timeRemaining = 60.0
             currentText = ""
+            
+            // Start audio recording if we're in recording mode
+            if setupAudioRecorder() {
+                audioRecorder?.record()
+            }
+            
         case .editing(let initialText):
             currentText = initialText
             timeRemaining = 300.0  // 5 minutes for editing
+            
+            // We don't record audio when editing existing text
+            currentRecordingURL = nil
         }
         
         activeTranscriptionMode = mode
@@ -171,19 +213,37 @@ import NaturalLanguage
             // More sensitive threshold for voice detection
             let threshold: Float = 0.008
             
-            // Normalize audio level with better scaling for speech
-            let normalizedLevel = rms * 20
+            // Apply more nuanced normalization to better distinguish volume levels
+            // Use a lower multiplier to prevent hitting max level too easily
+            let normalizedLevel = rms * 15
             
             if normalizedLevel < threshold {
                 // Decay quickly to zero when silent
                 self.audioLevel = max(0, self.audioLevel - 0.15)
             } else {
-                // More responsive rise with smoothing - multiply by a factor to make
-                // speech more visually obvious in the waveform
-                let targetLevel = Double(min(normalizedLevel, 1.0))
+                // Map the audio level with more nuance
+                // Map different ranges of input to different slopes of output
+                let targetLevel: Double
                 
-                // Smooth the transition to avoid jitter but still be responsive
-                self.audioLevel = min(1.0, self.audioLevel * 0.7 + targetLevel * 0.3)
+                // Very soft sounds
+                if normalizedLevel < 0.05 {
+                    targetLevel = Double(normalizedLevel) * 3.0 // Gentle slope for quiet sounds
+                }
+                // Medium sounds
+                else if normalizedLevel < 0.2 {
+                    targetLevel = 0.15 + Double(normalizedLevel - 0.05) * 2.0 // Medium slope
+                }
+                // Loud sounds - make these harder to reach max
+                else {
+                    targetLevel = 0.45 + Double(normalizedLevel - 0.2) * 0.8 // Flatten curve at top end
+                }
+                
+                // Cap at 1.0 and apply smoothing for natural transitions
+                let cappedTarget = min(1.0, targetLevel)
+                
+                // Use more responsive smoothing for rising levels but keep smooth transitions
+                let riseFactor = cappedTarget > self.audioLevel ? 0.4 : 0.3
+                self.audioLevel = self.audioLevel * (1 - riseFactor) + cappedTarget * riseFactor
             }
         }
     }
@@ -202,6 +262,11 @@ import NaturalLanguage
         recognitionRequest = nil
         recognitionTask = nil
         
+        // Stop audio recording if we were recording
+        if let recorder = audioRecorder, recorder.isRecording {
+            recorder.stop()
+        }
+        
         isRecording = false
         stopTimer()
         audioLevel = 0.0
@@ -217,18 +282,27 @@ import NaturalLanguage
     
     private func handleRecordingCompletion() {
         // Skip saving if there's no text
-        guard !currentText.isEmpty else { return }
+        guard !currentText.isEmpty else {
+            // Clean up audio recording if nothing to save
+            if let url = currentRecordingURL {
+                try? FileManager.default.removeItem(at: url)
+            }
+            currentRecordingURL = nil
+            return
+        }
         
         let textToSave = currentText
+        let audioURL = currentRecordingURL
         currentText = ""
+        currentRecordingURL = nil
         
         transcriptionInProgress = true
         
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            // Save entry
-            let newEntry = JournalEntry(text: textToSave)
+            // Save entry with audio URL if available
+            let newEntry = JournalEntry(text: textToSave, audioURL: audioURL)
             self.journalEntries.append(newEntry)
             
             // Update UI state
@@ -260,7 +334,7 @@ import NaturalLanguage
     
     func updateEntry(id: UUID, newText: String) {
         if let index = journalEntries.firstIndex(where: { $0.id == id }) {
-            // Create a new entry with updated text but same ID and date
+            // Create a new entry with updated text but same ID, date and audio URL
             var updatedEntry = journalEntries[index]
             updatedEntry.text = newText
             
