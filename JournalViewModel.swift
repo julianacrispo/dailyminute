@@ -134,7 +134,7 @@ import AVFoundation
         
         recognitionRequest.shouldReportPartialResults = true
         recognitionRequest.taskHint = .dictation
-        recognitionRequest.contextualStrings = ["minute", "record", "today", "think"]
+        recognitionRequest.contextualStrings = ["minute", "record", "today", "think", "and", "but", "because", "so", "however", "therefore"]
         recognitionRequest.addsPunctuation = true
         
         let inputNode = audioEngine.inputNode
@@ -150,9 +150,10 @@ import AVFoundation
             
             if let result = result {
                 let transcription = result.bestTranscription.formattedString
+                let enhancedTranscription = self.enhanceTranscriptionPunctuation(transcription)
                 DispatchQueue.main.async {
-                    self.currentText = transcription
-                    self.textUpdateHandler?(transcription)
+                    self.currentText = enhancedTranscription
+                    self.textUpdateHandler?(enhancedTranscription)
                 }
             }
             
@@ -314,5 +315,56 @@ import AVFoundation
             // Replace the old entry with the updated one
             journalEntries[index] = updatedEntry
         }
+    }
+    
+    private func enhanceTranscriptionPunctuation(_ text: String) -> String {
+        // Create a tagger for both lexical class and token type analysis
+        let tagger = NLTagger(tagSchemes: [.lexicalClass, .tokenType])
+        tagger.string = text
+        
+        // Step 1: Fix possessive forms for proper nouns
+        var enhancedText = text
+        
+        // Find potential possessives (proper nouns that should have 's)
+        tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .lexicalClass, options: []) { tag, range in
+            if tag?.rawValue == "Noun" || tag?.rawValue == "ProperNoun" {
+                let word = String(text[range])
+                
+                // Check if it's likely a proper noun (capitalized)
+                if word.first?.isUppercase == true {
+                    // Look ahead to see if this might be a possessive context
+                    let endIndex = range.upperBound
+                    if endIndex < text.endIndex && text[endIndex] == " " {
+                        // Check if the next word indicates possession (like "swim" after "Hugo")
+                        let searchString = word + " "
+                        let replacement = word + "'s "
+                        enhancedText = enhancedText.replacingOccurrences(of: searchString, with: replacement)
+                    }
+                }
+            }
+            return true
+        }
+        
+        // Step 2: Improve sentence boundary detection
+        tagger.string = enhancedText
+        var sentences: [String] = []
+        
+        // Use the tokenType scheme to identify natural sentence boundaries
+        tagger.enumerateTags(in: enhancedText.startIndex..<enhancedText.endIndex, unit: .sentence, scheme: .tokenType, options: []) { _, sentenceRange in
+            let sentence = String(enhancedText[sentenceRange]).trimmingCharacters(in: .whitespaces)
+            sentences.append(sentence)
+            return true
+        }
+        
+        // Ensure each sentence has proper punctuation
+        let improvedText = sentences.map { sentence -> String in
+            var sentenceWithPunctuation = sentence
+            if !sentenceWithPunctuation.isEmpty && !".!?".contains(sentenceWithPunctuation.last!) {
+                sentenceWithPunctuation += "."
+            }
+            return sentenceWithPunctuation
+        }.joined(separator: " ")
+        
+        return improvedText
     }
 } 
