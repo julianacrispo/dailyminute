@@ -129,29 +129,65 @@ struct ContentView: View {
                             
                             // Transcribed text area - no dark card, just clean text
                             if viewModel.isRecording && showTranscription && !viewModel.currentText.isEmpty {
-                                ScrollView {
-                                    Text(viewModel.currentText)
-                                        .bodyStyle()
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 20)
+                                ScrollViewReader { scrollView in
+                                    ScrollView(showsIndicators: false) {
+                                        Text(viewModel.currentText)
+                                            .bodyStyle()
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 20)
+                                            .padding(.bottom, 40) // Add bottom padding to prevent text from being cut off at screen edge
+                                            .id("transcriptionEnd")
+                                    }
+                                    .frame(maxHeight: .infinity) // Extend to fill available space
+                                    .contentMargins(.bottom, 30) // Add content margin to bottom
+                                    .background {
+                                        // Create subtle background effect for text area
+                                        Color.black.opacity(0.1)
+                                            .ignoresSafeArea()
+                                            .blur(radius: 10)
+                                    }
+                                    .transition(
+                                        .opacity
+                                        .combined(with: .move(edge: .bottom))
+                                        .animation(.easeInOut(duration: 0.7))
+                                    )
+                                    .onChange(of: viewModel.currentText) { _ in
+                                        // Auto-scroll to bottom with a smoother animation
+                                        withAnimation(.easeOut(duration: 0.3)) {
+                                            scrollView.scrollTo("transcriptionEnd", anchor: .bottom)
+                                        }
+                                    }
                                 }
-                                .frame(maxHeight: 200)
-                                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                .animation(.easeInOut(duration: 0.7), value: viewModel.currentText)
                             } else if !viewModel.isRecording && !viewModel.currentText.isEmpty {
                                 // Show full transcription when not recording
-                                ScrollView {
-                                    Text(viewModel.currentText)
-                                        .bodyStyle()
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 20)
+                                ScrollViewReader { scrollView in
+                                    ScrollView(showsIndicators: false) {
+                                        Text(viewModel.currentText)
+                                            .bodyStyle()
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 20)
+                                            .padding(.bottom, 40) // Add bottom padding
+                                            .id("transcriptionEnd")
+                                    }
+                                    .frame(maxHeight: .infinity)
+                                    .contentMargins(.bottom, 30) // Add content margin to bottom
+                                    .background {
+                                        // Create subtle background effect for text area
+                                        Color.black.opacity(0.1)
+                                            .ignoresSafeArea()
+                                            .blur(radius: 10)
+                                    }
+                                    .transition(.opacity.animation(.easeInOut(duration: 0.6)))
+                                    // Initial scroll to bottom when appearing
+                                    .onAppear {
+                                        withAnimation(.easeOut(duration: 0.3)) {
+                                            scrollView.scrollTo("transcriptionEnd", anchor: .bottom)
+                                        }
+                                    }
                                 }
-                                .frame(maxHeight: .infinity)
-                                .transition(.opacity)
-                                .animation(.easeInOut(duration: 0.5), value: viewModel.isRecording)
                             }
                             
-                            Spacer(minLength: viewModel.isRecording ? 40 : 100)
+                            Spacer(minLength: viewModel.isRecording ? 0 : 100)
                                 .animation(.easeInOut(duration: 0.5), value: viewModel.isRecording)
                         }
                         .animation(.easeInOut(duration: 0.5), value: viewModel.isRecording)
