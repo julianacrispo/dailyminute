@@ -416,6 +416,7 @@ struct AudioPlayerView: View {
     private func setupAudioPlayer() {
         do {
             audioPlayer = try AVAudioPlayer(contentsOf: audioURL)
+            audioPlayer?.enableRate = true  // Enable rate adjustment
             audioPlayer?.prepareToPlay()
             duration = audioPlayer?.duration ?? 0
             
@@ -438,6 +439,7 @@ struct AudioPlayerView: View {
     
     // Start playing the audio
     private func startPlayback() {
+        audioPlayer?.rate = playbackRate  // Ensure rate is applied
         audioPlayer?.play()
         isPlaying = true
         

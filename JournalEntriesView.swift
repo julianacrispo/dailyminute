@@ -235,6 +235,7 @@ struct JournalEntriesView: View {
                                     .contentShape(Rectangle()) // Make the entire card tappable
                                 }
                                 .buttonStyle(EntryButtonStyle()) // Use custom button style for better feedback
+                                .zIndex(1) // Ensure buttons are above any competing layers
                             }
                             .padding(.bottom, 16)
                         }
@@ -266,6 +267,10 @@ struct JournalEntriesView: View {
                 ForEach(daysInMonth(for: targetMonth)) { dateItem in
                     if let date = dateItem.date {
                         Button {
+                            // First reset any existing navigation state
+                            viewModel.selectedDay = nil
+                            viewModel.selectedEntry = nil
+                            
                             selectedDate = date
                             
                             // Get entries for the selected date
